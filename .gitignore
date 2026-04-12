@@ -1,0 +1,17 @@
+.note
+/build
+/image
+/dist
+/.history
+.env
+*.mp4
+*.text
+*.exe
+*.mp3
+*.db
+*.spec
+*.txt
+*.part
+/venv
+
+!requirement.txt

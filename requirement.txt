@@ -1,0 +1,11 @@
+PyQt6
+apify-client
+yt-dlp
+imageio-ffmpeg
+moviepy
+google-genai
+requests
+python-docx
+nuitka
+zstandard
+pyinstaller
