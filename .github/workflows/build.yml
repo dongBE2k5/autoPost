@@ -1,0 +1,56 @@
+name: Build Komeify App (Win & Mac)
+
+# Kịch bản sẽ chạy khi bạn đẩy code lên nhánh main hoặc bấm chạy bằng tay
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: 
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    # Dùng chiến thuật ma trận: Chạy song song 2 máy ảo Win và Mac cùng lúc
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+    # 1. Tải mã nguồn từ GitHub của bạn xuống máy chủ ảo
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 2. Cài đặt Python 3.11
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    # 3. Cài đặt các thư viện cần thiết
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    # 4. Đóng gói phần mềm bằng PyInstaller
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --clean --name "Komeify" --windowed --hidden-import docx --copy-metadata imageio --copy-metadata imageio-ffmpeg main.py
+
+    # 5A. Tải file .exe về (Nếu là máy Windows)
+    - name: Upload Windows Artifact
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: Komeify-Windows-App
+        path: dist/Komeify.exe
+
+    # 5B. Tải file .app về (Nếu là máy Mac)
+    - name: Upload macOS Artifact
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: Komeify-macOS-App
+        path: dist/Komeify.app
