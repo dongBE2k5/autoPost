@@ -14,4 +14,4 @@
 *.part
 /venv
 
-!requirement.txt
+!requirements.txt
