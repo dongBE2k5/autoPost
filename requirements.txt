@@ -9,3 +9,4 @@ python-docx
 nuitka
 zstandard
 pyinstaller
+pillow

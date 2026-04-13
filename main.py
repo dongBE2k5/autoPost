@@ -9,6 +9,11 @@ import sqlite3
 import shutil
 import requests
 import urllib.parse 
+import subprocess 
+import platform 
+
+if platform.system() == "Windows":
+    import winreg
 
 # --- CÁC THƯ VIỆN XỬ LÝ MEDIA & API TIKTOK/GEMINI ---
 from apify_client import ApifyClient
@@ -17,6 +22,7 @@ import imageio_ffmpeg
 from moviepy import VideoFileClip
 from google import genai
 from google.genai import types 
+from PIL import Image
 
 from PyQt6.QtWidgets import (QApplication, QWidget, QHBoxLayout, QVBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QTextEdit, QGroupBox, 
@@ -24,7 +30,7 @@ from PyQt6.QtWidgets import (QApplication, QWidget, QHBoxLayout, QVBoxLayout,
                              QListWidgetItem, QDialog, QSystemTrayIcon, QMenu, QStyle,
                              QSpinBox, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QTabWidget,
                              QInputDialog, QRadioButton, QButtonGroup, QFileDialog, QGraphicsDropShadowEffect,
-                             QComboBox, QCheckBox) 
+                             QComboBox, QCheckBox, QSlider) 
 from PyQt6.QtCore import QTime, Qt, QThread, pyqtSignal, QTimer, QPropertyAnimation, QEasingCurve, QRect, QPoint
 from PyQt6.QtGui import QAction, QIcon, QFont, QColor, QPixmap 
 from datetime import datetime
@@ -33,10 +39,14 @@ from datetime import datetime
 # TỰ ĐỘNG CẤU HÌNH FFMPEG CHO MOVIEPY KHỎI LỖI TRÊN WINDOWS
 # =====================================================================
 ffmpeg_hidden_path = imageio_ffmpeg.get_ffmpeg_exe()
-ffmpeg_local_path = os.path.join(os.getcwd(), "ffmpeg.exe")
+ext = ".exe" if platform.system() == "Windows" else ""
+ffmpeg_local_path = os.path.join(os.getcwd(), f"ffmpeg{ext}")
+
 if not os.path.exists(ffmpeg_local_path):
     try:
         shutil.copy(ffmpeg_hidden_path, ffmpeg_local_path)
+        if platform.system() != "Windows":
+            os.chmod(ffmpeg_local_path, 0o755)
     except Exception:
         pass
 
@@ -71,7 +81,7 @@ MODERN_STYLE = (
 )
 
 # ==========================================
-# 🌟 CUSTOM TOAST NOTIFICATION (THÔNG BÁO NỔI)
+# 🌟 CUSTOM TOAST NOTIFICATION
 # ==========================================
 class CustomToast(QFrame):
     def __init__(self, parent, title, message, is_error=False):
@@ -164,7 +174,8 @@ class ApiPipelineWorker(QThread):
     status_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(str, list) 
 
-    def __init__(self, apify_token, gemini_key, ai_model, count, custom_trend="", target_topics="", custom_prompt="", max_videos=1, doc_file_path="", ignore_keywords="", word_limit=0, gen_image=False):
+    # [MỚI] Nhận thêm các biến cấu hình Video (Veo 3.1)
+    def __init__(self, apify_token, gemini_key, ai_model, count, custom_trend="", target_topics="", custom_prompt="", max_videos=1, doc_file_path="", ignore_keywords="", word_limit=0, gen_image=False, logo_path="", logo_pos="", logo_opacity=100, logo_scale=20, gen_video=False, veo_model="veo-3.1-generate-preview", veo_aspect="16:9", veo_res="720p", veo_duration="8", veo_negative=""):
         super().__init__()
         self.apify_token = apify_token 
         self.gemini_key = gemini_key
@@ -177,7 +188,19 @@ class ApiPipelineWorker(QThread):
         self.doc_file_path = doc_file_path
         self.ignore_keywords = ignore_keywords
         self.word_limit = word_limit
+        
         self.gen_image = gen_image
+        self.logo_path = logo_path
+        self.logo_pos = logo_pos
+        self.logo_opacity = logo_opacity
+        self.logo_scale = logo_scale
+        
+        self.gen_video = gen_video
+        self.veo_model = veo_model
+        self.veo_aspect = veo_aspect
+        self.veo_res = veo_res
+        self.veo_duration = veo_duration
+        self.veo_negative = veo_negative
         
         self.temp_video = "temp_video.mp4"
         self.temp_audio = "temp_audio.mp3"
@@ -219,7 +242,6 @@ class ApiPipelineWorker(QThread):
 
             # 2. CÀO VIDEO TIKTOK
             buffer_limit = self.max_videos 
-            
             self.status_signal.emit(f"B1: [Apify] Đang tìm kiếm {buffer_limit} video TikTok...")
             client = ApifyClient(self.apify_token)
             search_keyword = self.custom_trend if self.custom_trend else "viral"
@@ -244,7 +266,6 @@ class ApiPipelineWorker(QThread):
             }
 
             run = client.actor("GULLsEZsAD69QFACQ").call(run_input=run_input)
-            
             videos_data = []
             for item in client.dataset(run["defaultDatasetId"]).iterate_items():
                 v_link = item.get("TikTok URL_video", "")
@@ -388,59 +409,126 @@ class ApiPipelineWorker(QThread):
                 
             self.status_signal.emit(f"B5 Xong: [{self.ai_model}] Đã chắp bút thành công!")
             
-            # --- [NÂNG CẤP]: DÙNG GEMINI-2.5-FLASH-IMAGE ĐỂ VẼ ẢNH ---
             final_posts = []
             
-            if self.gen_image:
-                for idx, text_content in enumerate(generated_contents):
-                    self.status_signal.emit(f"B6: [Gemini Image] Đang vẽ ảnh minh họa cho bài số {idx + 1}...")
-                    image_save_path = ""
+            for idx, text_content in enumerate(generated_contents):
+                image_save_path = ""
+                video_save_path = ""
+                
+                # --- [MỚI] TẠO VIDEO BẰNG VEO 3.1 ---
+                if self.gen_video:
+                    self.status_signal.emit(f"🎬 B6: [Veo 3.1] Đang render Video cho bài số {idx + 1} (Mất khoảng 2-5 phút)...")
                     try:
-                        # 6.1: Tóm tắt bài viết bằng Gemini để ra lệnh cho AI vẽ ảnh
+                        # Dùng Gemini tóm tắt bài viết thành kịch bản Video (prompt tiếng Anh)
+                        summary_prompt = f"Write a highly detailed, cinematic video generation prompt in English for a Facebook post about: {search_keyword}. Context: {text_content[:200]}. Do not include text, typography or dialogue in the video prompt. Focus purely on visual descriptions."
+                        veo_prompt_resp = genai_client.models.generate_content(model="gemini-2.5-flash", contents=summary_prompt)
+                        veo_prompt = veo_prompt_resp.text.strip()
+                        
+                        # Chèn nội dung cấm (Negative Prompt) vào thẳng Text Prompt
+                        if self.veo_negative:
+                            veo_prompt += f"\n\nNegative prompt: {self.veo_negative}"
+                            
+                        # Cấu hình video linh hoạt qua Dictionary để tương thích với SDK
+                        veo_config = {
+                            "aspect_ratio": self.veo_aspect,
+                            "resolution": self.veo_res,
+                            "durationSeconds": self.veo_duration
+                        }
+                        
+                        operation = genai_client.models.generate_videos(
+                            model=self.veo_model,
+                            prompt=veo_prompt,
+                            config=veo_config
+                        )
+                        
+                        # Polling chờ Video (Không làm đơ ứng dụng vì đang chạy ở Thread phụ)
+                        while not operation.done:
+                            self.status_signal.emit(f"-> [Veo 3.1] Đang render Video bài {idx + 1}... Vui lòng đợi...")
+                            time.sleep(10)
+                            operation = genai_client.operations.get(operation)
+                            
+                        generated_video = operation.response.generated_videos[0]
+                        os.makedirs("video", exist_ok=True)
+                        video_save_path = f"video/ai_video_{int(time.time())}_{idx}.mp4"
+                        
+                        # Tải và lưu Video
+                        genai_client.files.download(file=generated_video.video)
+                        generated_video.video.save(video_save_path)
+                        self.status_signal.emit(f"✅ Đã render xong Video: {video_save_path}")
+                        
+                    except Exception as vid_err:
+                        self.status_signal.emit(f"⚠️ Lỗi tạo Video Veo 3.1: {str(vid_err)}")
+                
+                # --- TẠO ẢNH BẰNG GEMINI FLASH IMAGE (Nếu không chọn tạo Video) ---
+                elif self.gen_image:
+                    self.status_signal.emit(f"B6: [Gemini Image] Đang vẽ ảnh minh họa cho bài số {idx + 1}...")
+                    try:
                         summary_prompt = f"Write a short, highly descriptive image generation prompt in English for a Facebook post about: {search_keyword}. Context: {text_content[:200]}. Do not include any text in the image itself. High quality, professional photography style."
                         img_prompt_resp = genai_client.models.generate_content(model="gemini-2.5-flash", contents=summary_prompt)
                         english_img_prompt = img_prompt_resp.text.strip()
                         
-                        # 6.2: Gọi thẳng model gemini-2.5-flash-image thông qua generate_content
                         img_response = genai_client.models.generate_content(
                             model="gemini-2.5-flash-image",
                             contents=english_img_prompt
                         )
                         
-                        # Xử lý bóc tách inline_data từ phản hồi của Gemini
                         image_saved = False
                         if getattr(img_response, "candidates", None):
                             for part in img_response.candidates[0].content.parts:
                                 if hasattr(part, "inline_data") and part.inline_data:
                                     img_bytes = part.inline_data.data
-                                        
-                                    # [NÂNG CẤP 1] Tự động tạo folder 'image' và lưu vào đó
                                     os.makedirs("image", exist_ok=True)
                                     image_save_path = f"image/ai_image_{int(time.time())}_{idx}.png"
-                                        
                                     with open(image_save_path, "wb") as f:
                                          f.write(img_bytes)
-                                            
                                     self.status_signal.emit(f"-> Đã vẽ xong ảnh: {image_save_path}")
                                     image_saved = True
-                                    break
                                     
+                                    # XỬ LÝ ĐÓNG DẤU LOGO LÊN ẢNH
+                                    if self.logo_path and os.path.exists(self.logo_path):
+                                        self.status_signal.emit("-> Đang đóng dấu Logo (Watermark) lên ảnh...")
+                                        try:
+                                            base_img = Image.open(image_save_path).convert("RGBA")
+                                            watermark = Image.open(self.logo_path).convert("RGBA")
+                                            base_w, base_h = base_img.size
+                                            wm_w, wm_h = watermark.size
+                                            
+                                            scale_factor = self.logo_scale / 100.0
+                                            new_wm_w = int(base_w * scale_factor)
+                                            new_wm_h = int(wm_h * (new_wm_w / wm_w))
+                                            watermark = watermark.resize((new_wm_w, new_wm_h), Image.Resampling.LANCZOS)
+                                            
+                                            if self.logo_opacity < 100:
+                                                alpha = watermark.split()[3]
+                                                alpha = alpha.point(lambda p: p * (self.logo_opacity / 100.0))
+                                                watermark.putalpha(alpha)
+                                                
+                                            padding = 20 
+                                            pos_x, pos_y = 0, 0
+                                            
+                                            if self.logo_pos == "Góc trên Trái": pos_x, pos_y = padding, padding
+                                            elif self.logo_pos == "Góc trên Phải": pos_x, pos_y = base_w - new_wm_w - padding, padding
+                                            elif self.logo_pos == "Góc dưới Trái": pos_x, pos_y = padding, base_h - new_wm_h - padding
+                                            elif self.logo_pos == "Góc dưới Phải": pos_x, pos_y = base_w - new_wm_w - padding, base_h - new_wm_h - padding
+                                            elif self.logo_pos == "Chính giữa": pos_x, pos_y = (base_w - new_wm_w) // 2, (base_h - new_wm_h) // 2
+                                                
+                                            base_img.paste(watermark, (pos_x, pos_y), watermark)
+                                            base_img.convert("RGB").save(image_save_path)
+                                            self.status_signal.emit("-> Đóng dấu Logo thành công! ✅")
+                                        except Exception as wm_err:
+                                            self.status_signal.emit(f"⚠️ Lỗi đóng dấu Logo: {str(wm_err)}")
+                                    break
                         if not image_saved:
                             raise Exception("Không tìm thấy dữ liệu ảnh (inline_data) trong phản hồi của API.")
 
                     except Exception as img_err:
                         self.status_signal.emit(f"⚠️ Không thể vẽ ảnh cho bài {idx + 1}: {str(img_err)}")
                         
-                    final_posts.append({
-                        "content": text_content,
-                        "image_path": image_save_path
-                    })
-            else:
-                for text_content in generated_contents:
-                    final_posts.append({
-                        "content": text_content,
-                        "image_path": ""
-                    })
+                final_posts.append({
+                    "content": text_content,
+                    "image_path": image_save_path,
+                    "video_path": video_save_path # [MỚI] Thêm video_path vào dữ liệu bài viết
+                })
             
             total_tokens = total_in_tokens + total_out_tokens
             self.status_signal.emit(f"🪙 [Chi phí Token] Tổng sử dụng Text: {total_tokens:,} (Input: {total_in_tokens:,} | Output: {total_out_tokens:,})")
@@ -450,12 +538,148 @@ class ApiPipelineWorker(QThread):
 
         except Exception as e:
             self.status_signal.emit(f"❌ Pipeline Lỗi: {str(e)}")
-            self.finished_signal.emit("Lỗi Pipeline", [{"content": f"Lỗi: {str(e)}", "image_path": ""}])
+            self.finished_signal.emit("Lỗi Pipeline", [{"content": f"Lỗi: {str(e)}", "image_path": "", "video_path": ""}])
 
 
 # ==========================================
 # CÁC CLASS CỬA SỔ PHỤ
 # ==========================================
+
+# --- [MỚI] CỬA SỔ CÀI ĐẶT VIDEO (VEO 3.1) ---
+class VideoSettingsDialog(QDialog):
+    def __init__(self, model, aspect, res, duration, negative, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🎥 Cài đặt Video AI (Veo 3.1)")
+        self.resize(600, 350)
+        self.setStyleSheet(MODERN_STYLE)
+
+        layout = QVBoxLayout(self)
+
+        row_model = QHBoxLayout()
+        self.combo_model = QComboBox()
+        self.combo_model.addItems(["veo-3.1-generate-preview", "veo-3.1-lite-preview"])
+        self.combo_model.setCurrentText(model)
+        row_model.addWidget(QLabel("Mô hình Video:"))
+        row_model.addWidget(self.combo_model, stretch=1)
+        layout.addLayout(row_model)
+
+        row_format = QHBoxLayout()
+        self.combo_aspect = QComboBox()
+        self.combo_aspect.addItems(["16:9", "9:16"])
+        self.combo_aspect.setCurrentText(aspect)
+        row_format.addWidget(QLabel("Tỷ lệ khung hình:"))
+        row_format.addWidget(self.combo_aspect, stretch=1)
+        
+        self.combo_res = QComboBox()
+        self.combo_res.addItems(["720p", "1080p", "4k"])
+        self.combo_res.setCurrentText(res)
+        row_format.addWidget(QLabel("Độ phân giải:"))
+        row_format.addWidget(self.combo_res, stretch=1)
+        layout.addLayout(row_format)
+
+        row_duration = QHBoxLayout()
+        self.combo_duration = QComboBox()
+        self.combo_duration.addItems(["4", "6", "8"])
+        self.combo_duration.setCurrentText(duration)
+        row_duration.addWidget(QLabel("Thời lượng (giây):"))
+        row_duration.addWidget(self.combo_duration, stretch=1)
+        lbl_hint = QLabel("<i>*Lưu ý: 1080p & 4k bắt buộc là 8s</i>")
+        lbl_hint.setStyleSheet("color: #64748b;")
+        row_duration.addWidget(lbl_hint)
+        layout.addLayout(row_duration)
+
+        layout.addWidget(QLabel("🚫 Nội dung cần tránh trong Video (Negative Prompt):"))
+        self.input_negative = QTextEdit()
+        self.input_negative.setPlainText(negative)
+        self.input_negative.setPlaceholderText("Ghi bằng tiếng Anh. VD: text, urban background, man-made structures, dark...")
+        layout.addWidget(self.input_negative)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("Hủy bỏ")
+        btn_cancel.clicked.connect(self.reject)
+        btn_save = QPushButton("💾 Lưu Cài Đặt Video")
+        btn_save.setStyleSheet("background-color: #22c55e; color: white; font-weight: bold;")
+        btn_save.clicked.connect(self.accept)
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_save)
+        
+        layout.addLayout(btn_layout)
+
+    def get_settings(self):
+        return self.combo_model.currentText(), self.combo_aspect.currentText(), self.combo_res.currentText(), self.combo_duration.currentText(), self.input_negative.toPlainText().strip()
+
+
+class LogoSettingsDialog(QDialog):
+    def __init__(self, path, pos, opacity, scale, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🖼️ Cài đặt Logo / Watermark")
+        self.resize(550, 300)
+        self.setStyleSheet(MODERN_STYLE)
+
+        layout = QVBoxLayout(self)
+
+        row_file = QHBoxLayout()
+        self.input_file = QLineEdit(path)
+        self.input_file.setPlaceholderText("Đường dẫn file Logo (.png nền trong suốt)")
+        btn_browse = QPushButton("📁 Chọn Logo")
+        btn_browse.clicked.connect(self.browse_logo)
+        btn_clear = QPushButton("❌")
+        btn_clear.clicked.connect(self.input_file.clear)
+        row_file.addWidget(QLabel("File Logo:"))
+        row_file.addWidget(self.input_file, stretch=1)
+        row_file.addWidget(btn_browse)
+        row_file.addWidget(btn_clear)
+        layout.addLayout(row_file)
+
+        row_pos = QHBoxLayout()
+        self.combo_pos = QComboBox()
+        self.combo_pos.addItems(["Góc dưới Phải", "Góc dưới Trái", "Góc trên Phải", "Góc trên Trái", "Chính giữa"])
+        self.combo_pos.setCurrentText(pos)
+        row_pos.addWidget(QLabel("Vị trí đóng dấu:"))
+        row_pos.addWidget(self.combo_pos, stretch=1)
+        layout.addLayout(row_pos)
+
+        row_scale = QHBoxLayout()
+        self.spin_scale = QSpinBox()
+        self.spin_scale.setRange(5, 100)
+        self.spin_scale.setValue(int(scale))
+        self.spin_scale.setSuffix(" % (so với ảnh gốc)")
+        row_scale.addWidget(QLabel("Kích thước Logo:"))
+        row_scale.addWidget(self.spin_scale, stretch=1)
+        layout.addLayout(row_scale)
+
+        row_opacity = QHBoxLayout()
+        self.spin_opacity = QSpinBox()
+        self.spin_opacity.setRange(10, 100)
+        self.spin_opacity.setValue(int(opacity))
+        self.spin_opacity.setSuffix(" % (Độ rõ nét)")
+        row_opacity.addWidget(QLabel("Độ mờ (Opacity):"))
+        row_opacity.addWidget(self.spin_opacity, stretch=1)
+        layout.addLayout(row_opacity)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("Hủy bỏ")
+        btn_cancel.clicked.connect(self.reject)
+        btn_save = QPushButton("💾 Lưu Cài Đặt Logo")
+        btn_save.setStyleSheet("background-color: #22c55e; color: white; font-weight: bold;")
+        btn_save.clicked.connect(self.accept)
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_save)
+        
+        layout.addStretch()
+        layout.addLayout(btn_layout)
+
+    def browse_logo(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Chọn file Logo", "", "Images (*.png *.jpg *.jpeg);;All Files (*)")
+        if file_path:
+            self.input_file.setText(file_path)
+
+    def get_settings(self):
+        return self.input_file.text(), self.combo_pos.currentText(), self.spin_opacity.value(), self.spin_scale.value()
+
+
 class DraftDetailDialog(QDialog):
     def __init__(self, draft_data, parent=None):
         super().__init__(parent)
@@ -469,33 +693,48 @@ class DraftDetailDialog(QDialog):
         main_layout = QHBoxLayout()
         self.setLayout(main_layout)
 
-        # --- CỘT TRÁI: HIỂN THỊ HÌNH ẢNH ---
+        # --- [MỚI] Hiển thị UI cho Video hoặc Ảnh ---
+        vid_path = self.draft_data.get("video_path", "")
         img_path = self.draft_data.get("image_path", "")
-        if img_path and os.path.exists(img_path):
+        
+        if vid_path and os.path.exists(vid_path):
+            media_frame = QFrame()
+            media_frame.setObjectName("MediaFrame") 
+            media_layout = QVBoxLayout(media_frame)
+            media_layout.setContentsMargins(20, 20, 20, 20)
+            media_layout.addWidget(QLabel('<b>🎬 Video minh họa (Veo 3.1):</b>'))
+            
+            lbl_vid = QLabel("Phát hiện Video đính kèm.\n(Không thể xem trước trực tiếp trong app)")
+            lbl_vid.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_vid.setStyleSheet("color: #94a3b8; font-size: 16px; font-style: italic;")
+            media_layout.addWidget(lbl_vid, stretch=1)
+            
+            btn_play = QPushButton("▶️ MỞ VIDEO BẰNG PHẦN MỀM MÁY TÍNH")
+            btn_play.setStyleSheet("background-color: #ef4444; color: white; padding: 15px; font-weight: bold;")
+            btn_play.clicked.connect(lambda: os.startfile(vid_path) if sys.platform == "win32" else subprocess.call(["open" if sys.platform == "darwin" else "xdg-open", vid_path]))
+            media_layout.addWidget(btn_play)
+            
+            main_layout.addWidget(media_frame, stretch=4)
+            
+        elif img_path and os.path.exists(img_path):
             media_frame = QFrame()
             media_frame.setObjectName("MediaFrame") 
             media_layout = QVBoxLayout(media_frame)
             media_layout.setContentsMargins(10, 10, 10, 10)
             
             media_layout.addWidget(QLabel('<b>🖼️ Hình ảnh minh họa (Gemini Image):</b>'))
-            
             self.image_label = QLabel()
             self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.image_label.setMinimumSize(450, 450)
-            
             pixmap = QPixmap(img_path)
             if not pixmap.isNull():
-                scaled_pixmap = pixmap.scaled(450, 450, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                self.image_label.setPixmap(scaled_pixmap)
+                self.image_label.setPixmap(pixmap.scaled(450, 450, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             else:
                 self.image_label.setText("⚠️ Không thể tải hình ảnh.")
-            
             media_layout.addWidget(self.image_label, stretch=1)
             main_layout.addWidget(media_frame, stretch=4) 
 
-        # --- CỘT PHẢI: CHỈNH SỬA TEXT ---
         editor_layout = QVBoxLayout()
-        
         info_layout = QHBoxLayout()
         info_layout.addWidget(QLabel('<b>🕒 Thời gian:</b>'))
         time_edit = QLineEdit(self.draft_data.get("timestamp", "Không xác định"))
@@ -564,19 +803,16 @@ class DraftsDialog(QDialog):
         top_layout.addWidget(self.btn_select_all)
         layout.addLayout(top_layout)
 
-        # [NÂNG CẤP] Tăng lên 5 cột để chứa Ảnh Thumbnail
         self.table_widget = QTableWidget(len(self.drafts_list), 5) 
-        self.table_widget.setHorizontalHeaderLabels(["Chọn", "Ảnh minh họa", "Thời gian tạo", "Từ khóa / Nguồn", "Nội dung"])
+        self.table_widget.setHorizontalHeaderLabels(["Chọn", "Media (Ảnh/Video)", "Thời gian tạo", "Từ khóa / Nguồn", "Nội dung"])
         self.table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers) 
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table_widget.itemDoubleClicked.connect(self.on_item_double_clicked)
-        
-        # [NÂNG CẤP] Tăng chiều cao các dòng để hiển thị vừa vặn ảnh thu nhỏ
         self.table_widget.verticalHeader().setDefaultSectionSize(80) 
         
         header = self.table_widget.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # Cột Ảnh
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) 
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch) 
@@ -585,7 +821,7 @@ class DraftsDialog(QDialog):
 
         layout.addWidget(self.table_widget, stretch=1)
         
-        hint_label = QLabel("💡 <b>Mẹo:</b> Tích vào ô vuông để chọn bài. Click đúp vào một dòng để <b>XEM PHÓNG TO ẢNH/SỬA</b> chi tiết bài viết.")
+        hint_label = QLabel("💡 <b>Mẹo:</b> Tích vào ô vuông để chọn bài. Click đúp vào một dòng để <b>XEM CHI TIẾT/SỬA</b> bài viết.")
         hint_label.setStyleSheet("color: #64748b; margin-bottom: 5px;")
         layout.addWidget(hint_label)
 
@@ -644,17 +880,21 @@ class DraftsDialog(QDialog):
                 chk_item.setCheckState(Qt.CheckState.Unchecked)
                 chk_item.setData(Qt.ItemDataRole.UserRole, d) 
                 
-                # --- [NÂNG CẤP 2]: Chèn ảnh Thumbnail và cho phép click xuyên thấu ---
+                vid_path = d.get('video_path', '')
                 img_path = d.get('image_path', '')
-                if img_path and os.path.exists(img_path):
+                
+                if vid_path and os.path.exists(vid_path):
+                    lbl = QLabel("🎬 CÓ VIDEO")
+                    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    lbl.setStyleSheet("font-weight: bold; color: #ef4444;")
+                    lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                    self.table_widget.setCellWidget(row, 1, lbl)
+                elif img_path and os.path.exists(img_path):
                     img_label = QLabel()
                     pixmap = QPixmap(img_path).scaled(70, 70, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                     img_label.setPixmap(pixmap)
                     img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    
-                    # [QUAN TRỌNG NHẤT]: Bỏ qua bắt sự kiện chuột trên ảnh để bảng nhận được lệnh click
                     img_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-                    
                     self.table_widget.setCellWidget(row, 1, img_label)
                 else:
                     no_img_item = QTableWidgetItem("Không có")
@@ -695,7 +935,6 @@ class DraftsDialog(QDialog):
         draft_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
         dialog = DraftDetailDialog(draft_data, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            # Cập nhật lại cột nếu User chỉnh sửa text
             self.table_widget.setItem(row, 3, QTableWidgetItem(draft_data.get("keyword", "")))
             self.table_widget.setItem(row, 4, QTableWidgetItem(draft_data.get("content", "").replace('\n', ' ')))
             if self.parent():
@@ -986,11 +1225,79 @@ class AutoPostApp(QWidget):
         self.is_settings_unlocked = False 
         self.schedule_string = "" 
         
+        self.logo_path = ""
+        self.logo_pos = "Góc dưới Phải"
+        self.logo_opacity = 100
+        self.logo_scale = 20
+        
+        # [MỚI] Cấu hình Video
+        self.veo_model = "veo-3.1-generate-preview"
+        self.veo_aspect = "16:9"
+        self.veo_res = "720p"
+        self.veo_duration = "8"
+        self.veo_negative = ""
+        
+        self.check_and_create_cookie_file()
+        
         self.setStyleSheet(MODERN_STYLE)
         self.init_db() 
         self.initUI()
         self.setup_tray_icon()
         self.load_config() 
+
+    def set_run_on_startup(self, enable):
+        if platform.system() == "Windows":
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            app_name = "KomeifyAutoPostBot"
+            executable_path = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(sys.argv[0])
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
+                if enable:
+                    winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, f'"{executable_path}"')
+                else:
+                    try:
+                        winreg.DeleteValue(key, app_name)
+                    except FileNotFoundError:
+                        pass
+                winreg.CloseKey(key)
+            except Exception:
+                pass
+
+    def check_and_create_cookie_file(self):
+        cookie_path = os.path.join(os.getcwd(), 'cookies.txt')
+        if not os.path.exists(cookie_path) or os.path.getsize(cookie_path) == 0:
+            with open(cookie_path, 'w', encoding='utf-8') as f:
+                f.write("# Netscape HTTP Cookie File\n# HDSD: Xóa nội dung trong file này, copy toàn bộ nội dung từ tiện ích 'Get cookies.txt LOCALLY' trên Chrome và dán vào đây, sau đó bấm Save (Ctrl+S).\n")
+
+    def open_cookie_file(self):
+        cookie_path = os.path.join(os.getcwd(), 'cookies.txt')
+        self.check_and_create_cookie_file() 
+        try:
+            if sys.platform == "win32":
+                os.startfile(cookie_path)
+            elif sys.platform == "darwin":
+                subprocess.call(["open", cookie_path])
+            else:
+                subprocess.call(["xdg-open", cookie_path])
+            self.show_notification("Đã mở file Cookie 🍪", "Hãy dán dữ liệu cookie vào file vừa hiện lên và lưu lại (Ctrl+S) nhé.")
+        except Exception as e:
+            self.show_notification("Lỗi", f"Không thể tự động mở file: {e}", True)
+
+    def open_logo_dialog(self):
+        dialog = LogoSettingsDialog(self.logo_path, self.logo_pos, self.logo_opacity, self.logo_scale, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.logo_path, self.logo_pos, self.logo_opacity, self.logo_scale = dialog.get_settings()
+            self.save_config()
+            if self.logo_path:
+                self.show_notification("Logo đã lưu 🖼️", "Đã cập nhật cấu hình đóng dấu bản quyền.")
+
+    # --- [MỚI] Hàm mở cửa sổ cài đặt Video ---
+    def open_video_dialog(self):
+        dialog = VideoSettingsDialog(self.veo_model, self.veo_aspect, self.veo_res, self.veo_duration, self.veo_negative, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.veo_model, self.veo_aspect, self.veo_res, self.veo_duration, self.veo_negative = dialog.get_settings()
+            self.save_config()
+            self.show_notification("Đã lưu Cài đặt Video 🎬", "Video tạo ra sẽ tuân theo chuẩn bạn vừa lưu.")
 
     def init_db(self):
         conn = sqlite3.connect(DB_FILE)
@@ -1005,6 +1312,14 @@ class AutoPostApp(QWidget):
         try: c.execute('ALTER TABLE queue_posts ADD COLUMN image_path TEXT')
         except: pass
         try: c.execute('ALTER TABLE history_posts ADD COLUMN image_path TEXT')
+        except: pass
+        
+        # [MỚI] Bảng CSDL thêm cột cho video_path
+        try: c.execute('ALTER TABLE drafts ADD COLUMN video_path TEXT')
+        except: pass
+        try: c.execute('ALTER TABLE queue_posts ADD COLUMN video_path TEXT')
+        except: pass
+        try: c.execute('ALTER TABLE history_posts ADD COLUMN video_path TEXT')
         except: pass
 
         conn.commit()
@@ -1022,20 +1337,32 @@ class AutoPostApp(QWidget):
             "fb_id": self.input_fb_id.text(),
             "fb_token": self.input_fb_token.text(),
             "target_topics": self.input_target_topics.text(), 
-            "auto_az_times": self.schedule_string 
+            "auto_az_times": self.schedule_string,
+            "logo_path": self.logo_path, 
+            "logo_pos": self.logo_pos,
+            "logo_opacity": str(self.logo_opacity),
+            "logo_scale": str(self.logo_scale),
+            "run_on_startup": "1" if self.check_startup.isChecked() else "0",
+            "veo_model": self.veo_model,
+            "veo_aspect": self.veo_aspect,
+            "veo_res": self.veo_res,
+            "veo_duration": self.veo_duration,
+            "veo_negative": self.veo_negative
         }
         for k, v in settings.items(): c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (k, v))
 
         c.execute("DELETE FROM drafts")
-        for d in self.drafts_list: c.execute("INSERT INTO drafts VALUES (?, ?, ?, ?)", (d.get("keyword",""), d.get("content",""), d.get("timestamp",""), d.get("image_path", "")))
+        for d in self.drafts_list: c.execute("INSERT INTO drafts VALUES (?, ?, ?, ?, ?)", (d.get("keyword",""), d.get("content",""), d.get("timestamp",""), d.get("image_path", ""), d.get("video_path", "")))
 
         c.execute("DELETE FROM queue_posts")
-        for q in self.queue_list: c.execute("INSERT INTO queue_posts VALUES (?, ?, ?, ?)", (q.get("time",""), q.get("keyword",""), q.get("content",""), q.get("image_path", "")))
+        for q in self.queue_list: c.execute("INSERT INTO queue_posts VALUES (?, ?, ?, ?, ?)", (q.get("time",""), q.get("keyword",""), q.get("content",""), q.get("image_path", ""), q.get("video_path", "")))
 
         c.execute("DELETE FROM history_posts")
-        for h in self.history_list: c.execute("INSERT INTO history_posts VALUES (?, ?, ?, ?, ?)", (h.get("post_time",""), h.get("keyword",""), h.get("content",""), h.get("mode",""), h.get("image_path", "")))
+        for h in self.history_list: c.execute("INSERT INTO history_posts VALUES (?, ?, ?, ?, ?, ?)", (h.get("post_time",""), h.get("keyword",""), h.get("content",""), h.get("mode",""), h.get("image_path", ""), h.get("video_path", "")))
 
         conn.commit(); conn.close()
+        
+        self.set_run_on_startup(self.check_startup.isChecked())
 
     def action_save_config(self):
         self.save_config()
@@ -1055,6 +1382,19 @@ class AutoPostApp(QWidget):
         self.input_fb_token.setText(settings.get("fb_token", ""))
         self.input_target_topics.setText(settings.get("target_topics", "")) 
         
+        self.logo_path = settings.get("logo_path", "")
+        self.logo_pos = settings.get("logo_pos", "Góc dưới Phải")
+        self.logo_opacity = int(settings.get("logo_opacity", "100"))
+        self.logo_scale = int(settings.get("logo_scale", "20"))
+        
+        self.veo_model = settings.get("veo_model", "veo-3.1-generate-preview")
+        self.veo_aspect = settings.get("veo_aspect", "16:9")
+        self.veo_res = settings.get("veo_res", "720p")
+        self.veo_duration = settings.get("veo_duration", "8")
+        self.veo_negative = settings.get("veo_negative", "")
+        
+        self.check_startup.setChecked(settings.get("run_on_startup", "0") == "1")
+        
         saved_model = settings.get("gemini_model", "gemini-2.5-flash")
         idx = self.combo_gemini_model.findData(saved_model)
         if idx >= 0:
@@ -1064,22 +1404,22 @@ class AutoPostApp(QWidget):
 
         self.drafts_list.clear()
         try:
-            for row in c.execute("SELECT keyword, content, timestamp, image_path FROM drafts"):
-                self.drafts_list.append({"keyword": row[0], "content": row[1], "timestamp": row[2], "image_path": row[3]})
+            for row in c.execute("SELECT keyword, content, timestamp, image_path, video_path FROM drafts"):
+                self.drafts_list.append({"keyword": row[0], "content": row[1], "timestamp": row[2], "image_path": row[3], "video_path": row[4]})
         except sqlite3.OperationalError:
             pass
 
         self.queue_list.clear()
         try:
-            for row in c.execute("SELECT time, keyword, content, image_path FROM queue_posts ORDER BY time ASC"):
-                self.queue_list.append({"time": row[0], "keyword": row[1], "content": row[2], "image_path": row[3]})
+            for row in c.execute("SELECT time, keyword, content, image_path, video_path FROM queue_posts ORDER BY time ASC"):
+                self.queue_list.append({"time": row[0], "keyword": row[1], "content": row[2], "image_path": row[3], "video_path": row[4]})
         except sqlite3.OperationalError:
             pass
 
         self.history_list.clear()
         try:
-            for row in c.execute("SELECT post_time, keyword, content, mode, image_path FROM history_posts"):
-                self.history_list.append({"post_time": row[0], "keyword": row[1], "content": row[2], "mode": row[3], "image_path": row[4]})
+            for row in c.execute("SELECT post_time, keyword, content, mode, image_path, video_path FROM history_posts"):
+                self.history_list.append({"post_time": row[0], "keyword": row[1], "content": row[2], "mode": row[3], "image_path": row[4], "video_path": row[5]})
         except sqlite3.OperationalError:
             pass
 
@@ -1173,23 +1513,39 @@ class AutoPostApp(QWidget):
         row4.addWidget(self.input_ignore_keywords)
         ai_layout.addLayout(row4)
         
-        row4_5 = QHBoxLayout()
-        row4_5.addWidget(QLabel('📏 Giới hạn số từ tối đa:'))
+        row_limit = QHBoxLayout()
+        row_limit.addWidget(QLabel('📏 Giới hạn số từ tối đa:'))
         self.spin_word_limit = QSpinBox()
         self.spin_word_limit.setRange(0, 5000)
         self.spin_word_limit.setValue(0)
         self.spin_word_limit.setSpecialValueText("Không giới hạn")
-        row4_5.addWidget(self.spin_word_limit)
+        row_limit.addWidget(self.spin_word_limit)
+        row_limit.addStretch()
+        ai_layout.addLayout(row_limit)
         
-        self.check_gen_image = QCheckBox("🎨 Tự động vẽ ảnh minh họa (Gemini Flash Image)")
+        row_logo = QHBoxLayout()
+        self.check_gen_image = QCheckBox("🎨 Tự động vẽ ảnh minh họa (Image)")
         self.check_gen_image.setStyleSheet("color: #2563eb; font-weight: bold;")
-        row4_5.addWidget(self.check_gen_image)
+        self.btn_logo_settings = QPushButton('🖼️ Cài đặt Logo')
+        self.btn_logo_settings.setStyleSheet("background-color: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 15px;")
+        self.btn_logo_settings.clicked.connect(self.open_logo_dialog)
         
-        row4_5.addStretch()
-        ai_layout.addLayout(row4_5)
+        # --- [MỚI] TÍCH HỢP TÍNH NĂNG TẠO VIDEO ---
+        self.check_gen_video = QCheckBox("🎬 Tự động tạo Video (Veo 3.1)")
+        self.check_gen_video.setStyleSheet("color: #ef4444; font-weight: bold; margin-left: 20px;")
+        self.btn_video_settings = QPushButton('🎥 Cài đặt Video')
+        self.btn_video_settings.setStyleSheet("background-color: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 15px;")
+        self.btn_video_settings.clicked.connect(self.open_video_dialog)
+        
+        row_logo.addWidget(self.check_gen_image)
+        row_logo.addWidget(self.btn_logo_settings)
+        row_logo.addWidget(self.check_gen_video)
+        row_logo.addWidget(self.btn_video_settings)
+        row_logo.addStretch()
+        ai_layout.addLayout(row_logo)
         
         self.btn_auto_pipeline = QPushButton('⚡ BẮT ĐẦU CÀO & PHÂN TÍCH')
-        self.btn_auto_pipeline.setStyleSheet("background-color: #8b5cf6; color: white; padding: 15px; font-size: 15px;")
+        self.btn_auto_pipeline.setStyleSheet("background-color: #8b5cf6; color: white; padding: 15px; font-size: 15px; margin-top: 10px;")
         self.btn_auto_pipeline.clicked.connect(self.run_api_pipeline)
         ai_layout.addWidget(self.btn_auto_pipeline)
         
@@ -1313,34 +1669,50 @@ class AutoPostApp(QWidget):
         history_layout.addWidget(self.table_posted_history)
         self.tab_widget.addTab(self.tab_posted_history, "🕒 Lịch sử Post")
 
+        # --- TAB THIẾT LẬP ---
         self.tab_settings = QWidget()
         set_layout = QVBoxLayout(self.tab_settings)
         
+        # Nhóm API & Facebook
+        api_group = QGroupBox("🔑 Cấu hình API & Facebook")
+        api_layout = QVBoxLayout()
         self.input_gemini = QLineEdit()
         self.input_gemini.setEchoMode(QLineEdit.EchoMode.Password) 
-        
         self.combo_gemini_model = QComboBox() 
         self.combo_gemini_model.addItem("gemini-2.5-flash (Khuyên dùng - Rẻ & Nhanh)", "gemini-2.5-flash")
         self.combo_gemini_model.addItem("gemini-2.5-pro (Thông minh - Đắt hơn)", "gemini-2.5-pro")
         self.combo_gemini_model.addItem("gemini-3.1-pro-preview (Siêu cấp - Rất đắt)", "gemini-3.1-pro-preview")
         self.combo_gemini_model.addItem("gemini-2.5-flash-lite (Siêu rẻ - Tốc độ cao)", "gemini-2.5-flash-lite")
         self.combo_gemini_model.setCurrentIndex(0) 
-        
         self.input_tiktok_api = QLineEdit()
         self.input_tiktok_api.setEchoMode(QLineEdit.EchoMode.Password) 
         self.input_fb_id = QLineEdit()
         self.input_fb_token = QLineEdit()
         self.input_fb_token.setEchoMode(QLineEdit.EchoMode.Password) 
         
-        set_layout.addWidget(QLabel("Gemini API Key:")); set_layout.addWidget(self.input_gemini)
-        set_layout.addWidget(QLabel("Chọn Model AI (Gemini):")); set_layout.addWidget(self.combo_gemini_model)
-        set_layout.addWidget(QLabel("Apify Token:")); set_layout.addWidget(self.input_tiktok_api)
-        set_layout.addWidget(QLabel("ID Facebook Page/User:")); set_layout.addWidget(self.input_fb_id)
-        set_layout.addWidget(QLabel("FB Access Token:")); set_layout.addWidget(self.input_fb_token)
+        api_layout.addWidget(QLabel("Gemini API Key:")); api_layout.addWidget(self.input_gemini)
+        api_layout.addWidget(QLabel("Chọn Model AI (Gemini):")); api_layout.addWidget(self.combo_gemini_model)
+        api_layout.addWidget(QLabel("Apify Token:")); api_layout.addWidget(self.input_tiktok_api)
+        api_layout.addWidget(QLabel("ID Facebook Page/User:")); api_layout.addWidget(self.input_fb_id)
+        api_layout.addWidget(QLabel("FB Access Token:")); api_layout.addWidget(self.input_fb_token)
         
+        self.btn_open_cookie = QPushButton('🍪 CẬP NHẬT COOKIES TIKTOK (Chống chặn)')
+        self.btn_open_cookie.setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold; padding: 10px; margin-top: 10px;")
+        self.btn_open_cookie.clicked.connect(self.open_cookie_file)
+        api_layout.addWidget(QLabel("<b>Bảo mật TikTok (Bắt buộc):</b>"))
+        api_layout.addWidget(self.btn_open_cookie)
+        api_group.setLayout(api_layout)
+        set_layout.addWidget(api_group)
+        
+        self.check_startup = QCheckBox("🚀 Khởi động phần mềm ngầm cùng Windows")
+        self.check_startup.setStyleSheet("font-weight: bold; color: #16a34a; font-size: 15px; margin-top: 10px;")
+        set_layout.addWidget(self.check_startup)
+
         self.btn_save_config = QPushButton('💾 LƯU CẤU HÌNH')
+        self.btn_save_config.setStyleSheet("background-color: #2563eb; color: white; min-height: 40px; margin-top: 10px;")
         self.btn_save_config.clicked.connect(self.action_save_config)
         set_layout.addWidget(self.btn_save_config)
+        
         set_layout.addStretch()
         self.tab_widget.addTab(self.tab_settings, "⚙️ Thiết Lập")
 
@@ -1426,7 +1798,17 @@ class AutoPostApp(QWidget):
             self.input_doc_file.text().strip(),
             self.input_ignore_keywords.toPlainText().strip(), 
             self.spin_word_limit.value(),
-            self.check_gen_image.isChecked()
+            self.check_gen_image.isChecked(),
+            self.logo_path,
+            self.logo_pos,
+            self.logo_opacity,
+            self.logo_scale,
+            self.check_gen_video.isChecked(), 
+            self.veo_model,
+            self.veo_aspect,
+            self.veo_res,
+            self.veo_duration,
+            self.veo_negative
         )
         self.api_pipeline_thread.status_signal.connect(self.add_log) 
         self.api_pipeline_thread.finished_signal.connect(self.on_pipeline_finished)
@@ -1437,7 +1819,13 @@ class AutoPostApp(QWidget):
         if content_list and not content_list[0].get("content", "").startswith("Lỗi"):
             current_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S") 
             for item in content_list: 
-                self.drafts_list.append({"keyword": trend, "content": item["content"], "timestamp": current_time, "image_path": item.get("image_path", "")})
+                self.drafts_list.append({
+                    "keyword": trend, 
+                    "content": item["content"], 
+                    "timestamp": current_time, 
+                    "image_path": item.get("image_path", ""),
+                    "video_path": item.get("video_path", "")
+                })
             self.save_config()
             self.add_log(f"-> Đã chuyển thành công {len(content_list)} bài vào Kho Content.")
             self.show_notification("Phân tích hoàn tất! 🎉", f"AI đã tạo xong {len(content_list)} bài viết. Mở Kho Content để xem.")
@@ -1447,7 +1835,7 @@ class AutoPostApp(QWidget):
     def open_drafts_dialog(self):
         dialog = DraftsDialog(self.drafts_list, self)
         dialog.post_now_requested.connect(lambda d: self.execute_post(d, datetime.now().strftime("%H:%M"), False))
-        dialog.queue_requested.connect(lambda d, t: self.queue_list.append({"time": t, "keyword": d.get("keyword", ""), "content": d.get("content", ""), "image_path": d.get("image_path", "")}))
+        dialog.queue_requested.connect(lambda d, t: self.queue_list.append({"time": t, "keyword": d.get("keyword", ""), "content": d.get("content", ""), "image_path": d.get("image_path", ""), "video_path": d.get("video_path", "")}))
         dialog.exec()
 
     def open_queue_dialog(self): QueueDialog(self.queue_list, self).exec()
@@ -1500,7 +1888,7 @@ class AutoPostApp(QWidget):
         if content_list and not content_list[0].get("content", "").startswith("Lỗi"):
             self.add_log(f"✅ [BOT A-Z] AI đã tạo xong {len(content_list)} bài. Đang tiến hành đăng lên Facebook...")
             for item in content_list:
-                post_data = {"keyword": trend, "content": item["content"], "image_path": item.get("image_path", "")}
+                post_data = {"keyword": trend, "content": item["content"], "image_path": item.get("image_path", ""), "video_path": item.get("video_path", "")}
                 self.execute_post(post_data, target_time, True, "Auto A-Z")
         else:
             err_msg = content_list[0].get("content", "Không rõ") if content_list else "Không rõ"
@@ -1531,7 +1919,17 @@ class AutoPostApp(QWidget):
                         self.input_doc_file.text().strip(),
                         self.input_ignore_keywords.toPlainText().strip(), 
                         self.spin_word_limit.value(),
-                        self.check_gen_image.isChecked()
+                        self.check_gen_image.isChecked(),
+                        self.logo_path,
+                        self.logo_pos,
+                        self.logo_opacity,
+                        self.logo_scale,
+                        self.check_gen_video.isChecked(), 
+                        self.veo_model,
+                        self.veo_aspect,
+                        self.veo_res,
+                        self.veo_duration,
+                        self.veo_negative
                     )
                     self.silent_pipeline_thread.status_signal.connect(self.add_log)
                     self.silent_pipeline_thread.finished_signal.connect(lambda t, c: self.on_silent_pipeline_finished(t, c, now_str))
@@ -1542,6 +1940,7 @@ class AutoPostApp(QWidget):
         content = post_data.get("content", "")
         keyword = post_data.get("keyword", "")
         image_path = post_data.get("image_path", "")
+        video_path = post_data.get("video_path", "")
         prefix = f"[{mode_name.upper()}]" if is_auto else "[THỦ CÔNG]"
         
         self.add_log(f"B7: {prefix} Đang chuẩn bị đăng lên Facebook Graph API...")
@@ -1557,8 +1956,16 @@ class AutoPostApp(QWidget):
             return
             
         try:
-            if image_path and os.path.exists(image_path):
-                self.add_log(f"-> Phát hiện có ảnh đính kèm, đang upload lên Facebook...")
+            # Ưu tiên Đăng Video trước nếu có
+            if video_path and os.path.exists(video_path):
+                self.add_log(f"-> Phát hiện có Video đính kèm, đang upload lên Facebook...")
+                url = f"https://graph.facebook.com/v24.0/{fb_id}/videos"
+                payload = {"description": content, "access_token": fb_token}
+                with open(video_path, 'rb') as f:
+                    files = {'source': f}
+                    response = requests.post(url, data=payload, files=files)
+            elif image_path and os.path.exists(image_path):
+                self.add_log(f"-> Phát hiện có Ảnh đính kèm, đang upload lên Facebook...")
                 url = f"https://graph.facebook.com/v24.0/{fb_id}/photos"
                 payload = {"caption": content, "access_token": fb_token}
                 with open(image_path, 'rb') as f:
@@ -1579,7 +1986,7 @@ class AutoPostApp(QWidget):
                 self.show_notification("Đăng FB thành công! 🚀", f"Bài viết đã được đẩy lên lúc {time_str}.")
                 
                 real_post_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S") 
-                self.history_list.append({"post_time": real_post_time, "keyword": keyword, "content": content, "mode": mode_name, "image_path": image_path})
+                self.history_list.append({"post_time": real_post_time, "keyword": keyword, "content": content, "mode": mode_name, "image_path": image_path, "video_path": video_path})
                 if len(self.history_list) > 1000: self.history_list.pop(0)
                     
                 self.refresh_history_table() 

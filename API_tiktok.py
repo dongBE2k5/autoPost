@@ -29,4 +29,4 @@ run = client.actor("GULLsEZsAD69QFACQ").call(run_input=run_input)
 
 # Fetch and print Actor results from the run's dataset (if there are any)
 for item in client.dataset(run["defaultDatasetId"]).iterate_items():
-    print(item,'\n')
+    print(item.get("TikTok URL_video", ""),'\n')
