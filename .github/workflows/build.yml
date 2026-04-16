@@ -34,9 +34,9 @@ jobs:
         pip install pyinstaller
 
     - name: Build with PyInstaller
-      # [FIX 2] Đã thêm cờ --onefile vào ngay sau --clean
+        # [FIX 2] Đã thêm cờ --onefile và --paths . để nhận diện cấu trúc MVC
       run: |
-        pyinstaller --clean --onefile --name "Komeify" --windowed --hidden-import docx --copy-metadata imageio --copy-metadata imageio-ffmpeg main.py
+          pyinstaller --clean --onefile --name "Komeify" --windowed --paths . --hidden-import docx --copy-metadata imageio --copy-metadata imageio-ffmpeg main.py
 
     - name: Upload Windows Artifact
       if: matrix.os == 'windows-latest'

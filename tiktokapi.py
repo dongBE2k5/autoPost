@@ -1,45 +1,116 @@
-from TikTokApi import TikTokApi
-import asyncio
-import os
-from datetime import datetime, timedelta
+import requests
+import time
+import random
 
-ms_token = os.getenv("ms_token")
 
-async def trending_videos():
 
-    now = datetime.now()
-    time_24h = now - timedelta(hours=24)
-    time_72h = now - timedelta(hours=72)
+# =========================
+# CONFIG
+# =========================
+KEYWORDS = [
+    "xuhuong",
+    "trend",
+    "fyp",
+    "viral",
+    "hot tiktok",
+    "tiktok vietnam"
+]
 
-    async with TikTokApi() as api:
+MAX_VIDEOS = 30
+MIN_VIEWS = 10000
 
-        await api.create_sessions(
-            ms_tokens=[ms_token],
-            num_sessions=1,
-            sleep_after=5,
-            browser="chromium",
-            headless=False   # 👈 QUAN TRỌNG
-        )
+# =========================
+# 1. CHỌN KEYWORD NGẪU NHIÊN
+# =========================
+keyword = random.choice(KEYWORDS)
 
-        async for video in api.trending.videos(count=50):
+print("🔍 Keyword:", keyword)
 
-            data = video.as_dict
+run_url = f"https://api.apify.com/v2/acts/clockworks~tiktok-scraper/runs?token={API_TOKEN}"
 
-            # chuyển timestamp → datetime
-            create_time = datetime.fromtimestamp(data["createTime"])
+payload = {
+    "searchQueries": [keyword],
 
-            if time_72h <= create_time <= time_24h:
+    "resultsPerPage": MAX_VIDEOS,
 
-                user_id = data["author"]["uniqueId"]
-                video_id = data["id"]
+    "proxyConfiguration": {
+        "useApifyProxy": True,
+        "apifyProxyGroups": ["RESIDENTIAL"],
+        "countryCode": "VN"
+    }
+}
 
-                video_url = f"https://www.tiktok.com/@{user_id}/video/{video_id}"
+res = requests.post(run_url, json=payload)
+data = res.json()
 
-                print(f"Description: {data['desc']}")
-                print(f"Views: {data['stats']['playCount']}")
-                print(f"Created: {create_time}")
-                print(f"URL: {video_url}")
-                print("-"*30)
+if "data" not in data:
+    print("❌ API lỗi:", data)
+    exit()
 
-if __name__ == "__main__":
-    asyncio.run(trending_videos())
+run_id = data["data"]["id"]
+
+# =========================
+# 2. WAIT
+# =========================
+status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={API_TOKEN}"
+
+while True:
+    status_res = requests.get(status_url).json()
+    status = status_res["data"]["status"]
+
+    print("⏳", status)
+
+    if status == "SUCCEEDED":
+        break
+    elif status in ["FAILED", "ABORTED"]:
+        print("❌ Actor lỗi")
+        exit()
+
+    time.sleep(3)
+
+# =========================
+# 3. GET DATA
+# =========================
+dataset_id = status_res["data"]["defaultDatasetId"]
+dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={API_TOKEN}"
+
+videos = requests.get(dataset_url).json()
+
+print("\n🔥 Tổng video:", len(videos))
+
+# =========================
+# 4. LỌC VIDEO
+# =========================
+count = 0
+
+for v in videos:
+    video_url = v.get("webVideoUrl")
+    download_url = v.get("videoUrl")
+    text = v.get("text", "")
+    views = v.get("playCount", 0)
+    likes = v.get("diggCount", 0)
+
+    if not video_url:
+        continue
+
+    if views < MIN_VIEWS:
+        continue
+
+    count += 1
+
+    print(f"\n🔥 VIDEO #{count}")
+    print("📌 Caption:", text[:80])
+    print("🎬 Xem:", video_url)
+    print("⬇️ Tải:", download_url)
+    print("👁 Views:", views)
+    print("❤️ Likes:", likes)
+
+# =========================
+# 5. FALLBACK
+# =========================
+if count == 0:
+    print("\n⚠️ Không lọc được → show top video\n")
+
+    for i, v in enumerate(videos[:10], 1):
+        print(f"\n🔥 VIDEO #{i}")
+        print("🎬", v.get("webVideoUrl"))

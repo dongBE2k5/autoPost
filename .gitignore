@@ -13,5 +13,6 @@
 *.txt
 *.part
 /venv
-
+__pycache__/
+*.pyc
 !requirements.txt
