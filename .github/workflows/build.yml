@@ -30,12 +30,11 @@ jobs:
         # BẮT BUỘC cài thêm zstandard để Nuitka có thể nén file thành Onefile
         pip install nuitka zstandard 
 
-    - name: Build with Nuitka
-      # Dùng shell bash để chạy lệnh if-else cho cả Windows và Mac
+    - name: Build Application
       shell: bash 
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          echo "Bắt đầu build cho Windows..."
+          echo "Bắt đầu build cho Windows bằng Nuitka..."
           python -m nuitka \
             --standalone \
             --onefile \
@@ -45,14 +44,11 @@ jobs:
             main.py
             
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          echo "Bắt đầu build cho macOS..."
-          python -m nuitka \
-            --standalone \
-            --macos-create-app-bundle \
-            --enable-plugin=pyqt6 \
-            --macos-app-name="Komeify" \
-            --output-filename=Komeify \
-            main.py
+          echo "Bắt đầu build cho macOS bằng PyInstaller..."
+          # Cài PyInstaller riêng cho Mac
+          pip install pyinstaller
+          # Đóng gói bằng PyInstaller (hỗ trợ PyQt6 trên Mac cực tốt)
+          pyinstaller --clean --windowed --name "Komeify" main.py
         fi
 
     - name: Upload Windows Artifact
@@ -66,5 +62,6 @@ jobs:
       if: matrix.os == 'macos-latest'
       uses: actions/upload-artifact@v4
       with:
-        name: Komeify-macOS-Secure-App
-        path: Komeify.app
+        name: Komeify-macOS-App
+        # Vì dùng PyInstaller, file xuất ra sẽ nằm trong thư mục dist/
+        path: dist/Komeify.app
