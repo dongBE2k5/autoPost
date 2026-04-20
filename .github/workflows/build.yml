@@ -41,7 +41,6 @@ jobs:
             --onefile \
             --enable-plugin=pyqt6 \
             --windows-disable-console \
-            --windows-icon-from-ico=assets/logo.ico \
             --output-filename=Komeify.exe \
             main.py
             
