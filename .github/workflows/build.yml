@@ -40,7 +40,6 @@ jobs:
               --standalone \
               --onefile \
               --enable-plugin=pyqt6 \
-              --windows-console-mode \
               --nofollow-import-to=yt_dlp \
               --include-package=yt_dlp \
               --output-filename=Komeify.exe \
