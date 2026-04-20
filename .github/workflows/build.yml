@@ -34,15 +34,17 @@ jobs:
       shell: bash 
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          echo "Bắt đầu build cho Windows bằng Nuitka..."
-          python -m nuitka \
-            --assume-yes-for-downloads \
-            --standalone \
-            --onefile \
-            --enable-plugin=pyqt6 \
-            --windows-console-mode=disable \
-            --output-filename=Komeify.exe \
-            main.py
+            echo "Bắt đầu build cho Windows bằng Nuitka..."
+            python -m nuitka \
+              --assume-yes-for-downloads \
+              --standalone \
+              --onefile \
+              --enable-plugin=pyqt6 \
+              --windows-console-mode=disable \
+              --nofollow-import-to=yt_dlp \
+              --include-package=yt_dlp \
+              --output-filename=Komeify.exe \
+              main.py
             
         elif [ "$RUNNER_OS" == "macOS" ]; then
           echo "Bắt đầu build cho macOS bằng PyInstaller..."
