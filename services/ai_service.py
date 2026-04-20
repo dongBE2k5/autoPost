@@ -123,6 +123,8 @@ class AIService:
             f"{system_prompt}\n\n" # <--- CHÈN VÀO ĐÂY
             "TUYỆT ĐỐI KHÔNG lặp lại yêu cầu của tôi. KHÔNG giải thích. CHỈ TRẢ VỀ NỘI DUNG CÁC BÀI VIẾT.\n\n"
             f"Dữ liệu gốc từ {successful_count} video TikTok:\n{combined_script}\n"
+            "QUY TẮC TỔNG HỢP: KHÔNG tóm tắt từng video. Hãy GOM NHÓM các video có chung thông điệp, "
+            f"LOẠI BỎ video lạc lõng. XÂU CHUỖI thành 1 câu chuyện liền mạch.\n"
             f"{config.get('doc_context', '')}\n" 
             f"YÊU CẦU: Viết ra ĐÚNG {config.get('count', 1)} BÀI ĐĂNG FACEBOOK FANPAGE.\n\n"
         )

@@ -1,13 +1,9 @@
-name: Build Komeify App (Win & Mac)
+name: Build Komeify App (Nuitka - High Security)
 
 on:
   push:
     branches: [ "main" ]
   workflow_dispatch: 
-
-# [FIX 1] Tắt cảnh báo Node.js 20 làm rối mắt
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -31,24 +27,45 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
+        # BẮT BUỘC cài thêm zstandard để Nuitka có thể nén file thành Onefile
+        pip install nuitka zstandard 
 
-    - name: Build with PyInstaller
-        # [FIX 2] Đã thêm cờ --onefile và --paths . để nhận diện cấu trúc MVC
+    - name: Build with Nuitka
+      # Dùng shell bash để chạy lệnh if-else cho cả Windows và Mac
+      shell: bash 
       run: |
-          pyinstaller --clean --onefile --name "Komeify" --windowed --paths . --hidden-import docx --copy-metadata imageio --copy-metadata imageio-ffmpeg main.py
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          echo "Bắt đầu build cho Windows..."
+          python -m nuitka \
+            --standalone \
+            --onefile \
+            --enable-plugin=pyqt6 \
+            --windows-disable-console \
+            --windows-icon-from-ico=assets/logo.ico \
+            --output-filename=Komeify.exe \
+            main.py
+            
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          echo "Bắt đầu build cho macOS..."
+          python -m nuitka \
+            --standalone \
+            --macos-create-app-bundle \
+            --enable-plugin=pyqt6 \
+            --macos-app-name="Komeify" \
+            --output-filename=Komeify \
+            main.py
+        fi
 
     - name: Upload Windows Artifact
       if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v4
       with:
-        name: Komeify-Windows-App
-        path: dist/Komeify.exe
+        name: Komeify-Windows-Secure-Exe
+        path: Komeify.exe
 
     - name: Upload macOS Artifact
       if: matrix.os == 'macos-latest'
       uses: actions/upload-artifact@v4
       with:
-        name: Komeify-macOS-App
-        # Trên Mac, file app luôn là một thư mục có đuôi .app
-        path: dist/Komeify.app
+        name: Komeify-macOS-Secure-App
+        path: Komeify.app
