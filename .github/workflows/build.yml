@@ -36,6 +36,7 @@ jobs:
         if [ "$RUNNER_OS" == "Windows" ]; then
           echo "Bắt đầu build cho Windows bằng Nuitka..."
           python -m nuitka \
+            --assume-yes-for-downloads \
             --standalone \
             --onefile \
             --enable-plugin=pyqt6 \
