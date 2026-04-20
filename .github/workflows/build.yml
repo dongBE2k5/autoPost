@@ -40,7 +40,7 @@ jobs:
             --standalone \
             --onefile \
             --enable-plugin=pyqt6 \
-            --windows-disable-console \
+            --windows-console-mode=disable \
             --output-filename=Komeify.exe \
             main.py
             
