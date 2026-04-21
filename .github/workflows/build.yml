@@ -34,17 +34,17 @@ jobs:
       shell: bash 
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          echo "Bắt đầu build cho Windows bằng Nuitka..."
-          # Đã bỏ --onefile để build dạng thư mục
-          python -m nuitka \
-            --assume-yes-for-downloads \
-            --standalone \
-            --enable-plugin=pyqt6 \
-            --nofollow-import-to=yt_dlp.extractor.lazy_extractors \
-            --include-package=yt_dlp \
-            --output-filename=Komeify.exe \
-            main.py
-        fi
+            echo "Bắt đầu build cho Windows bằng Nuitka (Dùng Clang)..."
+            python -m nuitka \
+              --assume-yes-for-downloads \
+              --standalone \
+              --enable-plugin=pyqt6 \
+              --nofollow-import-to=yt_dlp.extractor.lazy_extractors \
+              --include-package=yt_dlp \
+              --clang \
+              --output-filename=Komeify.exe \
+              main.py
+          fi
 
     - name: Compile Inno Setup (Tạo bộ cài đặt)
       if: matrix.os == 'windows-latest'
