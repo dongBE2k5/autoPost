@@ -30,15 +30,15 @@ jobs:
         # BẮT BUỘC cài thêm zstandard để Nuitka có thể nén file thành Onefile
         pip install nuitka zstandard 
 
-    - name: Build Application
+    - name: Build with Nuitka
       shell: bash 
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
           echo "Bắt đầu build cho Windows bằng Nuitka..."
+          # Đã XÓA lệnh --onefile để xuất ra dạng thư mục
           python -m nuitka \
             --assume-yes-for-downloads \
             --standalone \
-            --onefile \
             --enable-plugin=pyqt6 \
             --nofollow-import-to=yt_dlp.extractor.lazy_extractors \
             --include-package=yt_dlp \
@@ -46,7 +46,7 @@ jobs:
             --include-package=google.genai \
             --output-filename=Komeify.exe \
             main.py
-            
+        fi
         elif [ "$RUNNER_OS" == "macOS" ]; then
           echo "Bắt đầu build cho macOS bằng PyInstaller..."
           # Cài PyInstaller riêng cho Mac
@@ -55,12 +55,20 @@ jobs:
           pyinstaller --clean --windowed --name "Komeify" main.py
         fi
 
+    - name: Compile Inno Setup (Tạo bộ cài đặt)
+      if: matrix.os == 'windows-latest'
+      uses: minyus/iscc-action@v1
+      with:
+        # iss-path nằm ở ĐÚNG bước iscc-action này
+        iss-path: installer.iss
+
     - name: Upload Windows Artifact
       if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v4
       with:
-        iss-path: installer.iss
-
+        name: Komeify-Windows-Setup
+        # Upload Artifact dùng 'path', và trỏ tới file Setup vừa tạo ra
+        path: Output/Komeify_Setup_v1.0.exe
     - name: Upload macOS Artifact
       if: matrix.os == 'macos-latest'
       uses: actions/upload-artifact@v4
