@@ -1,4 +1,4 @@
-name: Build Komeify App (Nuitka - High Security)
+name: Build Komeify App (Nuitka + Inno Setup)
 
 on:
   push:
@@ -11,7 +11,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        # Chỉ tập trung build Windows bản xịn nhất
+        os: [windows-latest]
 
     steps:
     - name: Checkout code
@@ -27,7 +28,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        # BẮT BUỘC cài thêm zstandard để Nuitka có thể nén file thành Onefile
         pip install nuitka zstandard 
 
     - name: Build with Nuitka
@@ -35,11 +35,12 @@ jobs:
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
           echo "Bắt đầu build cho Windows bằng Nuitka..."
-          # Đã XÓA lệnh --onefile để xuất ra dạng thư mục
+          # Đã bỏ --onefile để build dạng thư mục
           python -m nuitka \
             --assume-yes-for-downloads \
             --standalone \
             --enable-plugin=pyqt6 \
+            --windows-console-mode=disable \
             --nofollow-import-to=yt_dlp.extractor.lazy_extractors \
             --include-package=yt_dlp \
             --nofollow-import-to=google.genai.types \
@@ -47,32 +48,21 @@ jobs:
             --output-filename=Komeify.exe \
             main.py
         fi
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          echo "Bắt đầu build cho macOS bằng PyInstaller..."
-          # Cài PyInstaller riêng cho Mac
-          pip install pyinstaller
-          # Đóng gói bằng PyInstaller (hỗ trợ PyQt6 trên Mac cực tốt)
-          pyinstaller --clean --windowed --name "Komeify" main.py
-        fi
 
     - name: Compile Inno Setup (Tạo bộ cài đặt)
       if: matrix.os == 'windows-latest'
-      uses: minyus/iscc-action@v1
-      with:
-        # iss-path nằm ở ĐÚNG bước iscc-action này
-        iss-path: installer.iss
+      shell: pwsh
+      run: |
+        echo "Đang cài đặt Inno Setup bằng Chocolatey..."
+        choco install innosetup -y
+        
+        echo "Đang đóng gói file Setup..."
+        # Chạy trực tiếp file thực thi của Inno Setup
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
     - name: Upload Windows Artifact
       if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v4
       with:
         name: Komeify-Windows-Setup
-        # Upload Artifact dùng 'path', và trỏ tới file Setup vừa tạo ra
         path: Output/Komeify_Setup_v1.0.exe
-    - name: Upload macOS Artifact
-      if: matrix.os == 'macos-latest'
-      uses: actions/upload-artifact@v4
-      with:
-        name: Komeify-macOS-App
-        # Vì dùng PyInstaller, file xuất ra sẽ nằm trong thư mục dist/
-        path: dist/Komeify.app
