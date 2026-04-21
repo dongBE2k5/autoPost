@@ -4,6 +4,22 @@ import os
 from config.settings import DB_FILE
 from models.post import ContentDraft
 
+# 1. Nhận diện chính xác thư mục gốc
+if getattr(sys, 'frozen', False) or '__compiled__' in globals():
+    # Khi đã build thành file .exe (Nuitka/PyInstaller)
+    base_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+else:
+    # Khi đang chạy code Python trên VS Code 
+    # (Vì file này nằm trong thư mục 'config', nên phải lùi 1 cấp ra thư mục gốc)
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# 2. Tạo thư mục data nằm ngay cạnh file .exe
+data_dir = os.path.join(base_dir, 'data')
+os.makedirs(data_dir, exist_ok=True)
+
+# 3. Trỏ database vào thư mục data này
+DB_FILE = os.path.join(data_dir, 'settings.db')
+# ==========================================
 class SettingsManager:
     def __init__(self):
         # Đảm bảo thư mục data tồn tại trước khi tạo DB
