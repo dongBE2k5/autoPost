@@ -1,24 +1,32 @@
 # ui/dialogs/media_settings.py
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-                             QPushButton, QTextEdit, QComboBox, QSpinBox, QFileDialog)
+                             QPushButton, QTextEdit, QComboBox, QSpinBox, QFileDialog,
+                             QGroupBox)
 from config.settings import MODERN_STYLE
 
 class VideoSettingsDialog(QDialog):
-    def __init__(self, model, aspect, res, duration, negative, parent=None):
+    # Đã thêm các tham số mới: style, camera, ref_image
+    def __init__(self, model, aspect, res, duration, negative, style="Mặc định", camera="Mặc định", ref_image="", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("🎥 Cài đặt Video AI (Veo 3.1)")
-        self.resize(600, 350)
+        self.setWindowTitle("🎥 Cài đặt Video AI Chuyên Sâu (Veo 3.1)")
+        self.resize(650, 500) # Tăng kích thước cửa sổ để chứa thêm nút
         self.setStyleSheet(MODERN_STYLE)
 
         layout = QVBoxLayout(self)
 
+        # ==========================================
+        # 1. CẤU HÌNH KỸ THUẬT CƠ BẢN
+        # ==========================================
+        tech_group = QGroupBox("⚙️ Thông số Kỹ thuật")
+        tech_layout = QVBoxLayout()
+        
         row_model = QHBoxLayout()
         self.combo_model = QComboBox()
         self.combo_model.addItems(["veo-3.1-generate-preview", "veo-3.1-lite-preview"])
         self.combo_model.setCurrentText(model)
         row_model.addWidget(QLabel("Mô hình Video:"))
         row_model.addWidget(self.combo_model, stretch=1)
-        layout.addLayout(row_model)
+        tech_layout.addLayout(row_model)
 
         row_format = QHBoxLayout()
         self.combo_aspect = QComboBox()
@@ -32,7 +40,7 @@ class VideoSettingsDialog(QDialog):
         self.combo_res.setCurrentText(res)
         row_format.addWidget(QLabel("Độ phân giải:"))
         row_format.addWidget(self.combo_res, stretch=1)
-        layout.addLayout(row_format)
+        tech_layout.addLayout(row_format)
 
         row_duration = QHBoxLayout()
         self.combo_duration = QComboBox()
@@ -43,19 +51,72 @@ class VideoSettingsDialog(QDialog):
         lbl_hint = QLabel("<i>*Lưu ý: 1080p & 4k bắt buộc là 8s</i>")
         lbl_hint.setStyleSheet("color: #64748b;")
         row_duration.addWidget(lbl_hint)
-        layout.addLayout(row_duration)
+        tech_layout.addLayout(row_duration)
+        
+        tech_group.setLayout(tech_layout)
+        layout.addWidget(tech_group)
 
+        # ==========================================
+        # 2. CẤU HÌNH BỐI CẢNH & PHONG CÁCH (NÂNG CẤP)
+        # ==========================================
+        context_group = QGroupBox("🎨 Bối cảnh & Đạo diễn (Context & Style)")
+        context_layout = QVBoxLayout()
+
+        row_style = QHBoxLayout()
+        self.combo_style = QComboBox()
+        self.combo_style.addItems([
+            "Mặc định", "Cinematic (Điện ảnh)", "Photorealistic (Siêu thực)", 
+            "3D Animation (Hoạt hình 3D)", "Anime/Manga", "Cyberpunk", "Vintage/Retro"
+        ])
+        self.combo_style.setCurrentText(style)
+        row_style.addWidget(QLabel("Phong cách:"))
+        row_style.addWidget(self.combo_style, stretch=1)
+
+        self.combo_camera = QComboBox()
+        self.combo_camera.addItems([
+            "Mặc định", "Slow Motion (Quay chậm)", "Macro (Cận cảnh chi tiết)", 
+            "Drone/Aerial (Góc quay từ trên cao)", "Panning (Lướt ngang)", "Zoom In"
+        ])
+        self.combo_camera.setCurrentText(camera)
+        row_style.addWidget(QLabel("Góc máy:"))
+        row_style.addWidget(self.combo_camera, stretch=1)
+        context_layout.addLayout(row_style)
+
+        # Tùy chọn chèn Ảnh Tham Chiếu (Dành cho Veo)
+        row_ref = QHBoxLayout()
+        self.input_ref_image = QLineEdit(ref_image)
+        self.input_ref_image.setPlaceholderText("Ảnh tham chiếu (Tùy chọn - Giúp AI giữ đúng hình ảnh SP)")
+        btn_browse_ref = QPushButton("📁 Chọn Ảnh")
+        btn_browse_ref.clicked.connect(self.browse_ref_image)
+        btn_clear_ref = QPushButton("❌")
+        btn_clear_ref.clicked.connect(self.input_ref_image.clear)
+        row_ref.addWidget(QLabel("Ảnh tham chiếu:"))
+        row_ref.addWidget(self.input_ref_image, stretch=1)
+        row_ref.addWidget(btn_browse_ref)
+        row_ref.addWidget(btn_clear_ref)
+        context_layout.addLayout(row_ref)
+
+        context_group.setLayout(context_layout)
+        layout.addWidget(context_group)
+
+        # ==========================================
+        # 3. NỘI DUNG CẤM
+        # ==========================================
         layout.addWidget(QLabel("🚫 Nội dung cần tránh trong Video (Negative Prompt):"))
         self.input_negative = QTextEdit()
         self.input_negative.setPlainText(negative)
-        self.input_negative.setPlaceholderText("Ghi bằng tiếng Anh. VD: text, urban background, man-made structures, dark...")
+        self.input_negative.setPlaceholderText("Ghi bằng tiếng Anh. VD: text, watermark, bad anatomy, blurry...")
+        self.input_negative.setMaximumHeight(60)
         layout.addWidget(self.input_negative)
 
+        # ==========================================
+        # NÚT ĐIỀU KHIỂN
+        # ==========================================
         btn_layout = QHBoxLayout()
         btn_cancel = QPushButton("Hủy bỏ")
         btn_cancel.clicked.connect(self.reject)
         btn_save = QPushButton("💾 Lưu Cài Đặt Video")
-        btn_save.setStyleSheet("background-color: #22c55e; color: white; font-weight: bold;")
+        btn_save.setStyleSheet("background-color: #22c55e; color: white; font-weight: bold; padding: 8px 15px;")
         btn_save.clicked.connect(self.accept)
         btn_layout.addStretch()
         btn_layout.addWidget(btn_cancel)
@@ -63,11 +124,27 @@ class VideoSettingsDialog(QDialog):
         
         layout.addLayout(btn_layout)
 
+    def browse_ref_image(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Chọn Ảnh Tham Chiếu", "", "Images (*.png *.jpg *.jpeg)")
+        if file_path:
+            self.input_ref_image.setText(file_path)
+
     def get_settings(self):
-        return self.combo_model.currentText(), self.combo_aspect.currentText(), self.combo_res.currentText(), self.combo_duration.currentText(), self.input_negative.toPlainText().strip()
+        # Trả về TẤT CẢ các thông số bao gồm cả các cài đặt nâng cao
+        return (
+            self.combo_model.currentText(), 
+            self.combo_aspect.currentText(), 
+            self.combo_res.currentText(), 
+            self.combo_duration.currentText(), 
+            self.input_negative.toPlainText().strip(),
+            self.combo_style.currentText(),         # Mới thêm
+            self.combo_camera.currentText(),        # Mới thêm
+            self.input_ref_image.text().strip()     # Mới thêm
+        )
 
 
 class LogoSettingsDialog(QDialog):
+    # (Phần này giữ nguyên code cũ của bạn)
     def __init__(self, path, pos, opacity, scale, parent=None):
         super().__init__(parent)
         self.setWindowTitle("🖼️ Cài đặt Logo / Watermark")

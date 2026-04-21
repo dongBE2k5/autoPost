@@ -70,11 +70,11 @@ class TabDashboard(QWidget):
         ai_layout = QVBoxLayout()
         
         row1 = QHBoxLayout()
-        row1.addWidget(QLabel('📌 Nguồn/Trend:'))
+        row1.addWidget(QLabel('Nguồn/Trend:'))
         self.console_keyword = QLineEdit() 
         self.console_keyword.setPlaceholderText("VD: Thời trang, Review...")
         row1.addWidget(self.console_keyword, stretch=1)
-        row1.addWidget(QLabel('🎥 Số video:'))
+        row1.addWidget(QLabel('Số video:'))
         self.spin_max_videos = QSpinBox()
         self.spin_max_videos.setRange(1, 50)
         self.spin_max_videos.setValue(1)
@@ -87,40 +87,41 @@ class TabDashboard(QWidget):
         ai_layout.addLayout(row1)
 
         row1_5 = QHBoxLayout()
-        row1_5.addWidget(QLabel('🎯 Chủ đề / Ngách:'))
+        row1_5.addWidget(QLabel('Chủ đề / Ngách:'))
         self.input_target_topics = QLineEdit()
         self.input_target_topics.setPlaceholderText("VD: Sức khỏe, Ăn uống, Mẹ bé...")
         row1_5.addWidget(self.input_target_topics, stretch=1)
         ai_layout.addLayout(row1_5)
 
         row2 = QHBoxLayout()
-        row2.addWidget(QLabel('📂 Tài liệu SP:'))
+        row2.addWidget(QLabel('Tài liệu SP:'))
         self.input_doc_file = QLineEdit()
         self.input_doc_file.setReadOnly(True)
         self.btn_browse_file = QPushButton('Chọn File')
         self.btn_clear_file = QPushButton('❌')
         self.btn_clear_file.clicked.connect(self.input_doc_file.clear)
+        self.btn_browse_file.clicked.connect(self.browse_doc_file)
         row2.addWidget(self.input_doc_file, stretch=1)
         row2.addWidget(self.btn_browse_file)
         row2.addWidget(self.btn_clear_file)
         ai_layout.addLayout(row2)
 
         row3 = QVBoxLayout()
-        row3.addWidget(QLabel('💡 Yêu cầu thêm (Prompt):'))
+        row3.addWidget(QLabel('Yêu cầu thêm (Prompt):'))
         self.input_custom_prompt = QTextEdit()
         self.input_custom_prompt.setMaximumHeight(60)
         row3.addWidget(self.input_custom_prompt)
         ai_layout.addLayout(row3)
 
         row4 = QVBoxLayout()
-        row4.addWidget(QLabel('🚫 Nội dung cấm (Negative):'))
+        row4.addWidget(QLabel('Nội dung cấm (Negative):'))
         self.input_ignore_keywords = QTextEdit()
         self.input_ignore_keywords.setMaximumHeight(60)
         row4.addWidget(self.input_ignore_keywords)
         ai_layout.addLayout(row4)
         
         row_limit = QHBoxLayout()
-        row_limit.addWidget(QLabel('📏 Giới hạn từ:'))
+        row_limit.addWidget(QLabel('Giới hạn từ:'))
         self.spin_word_limit = QSpinBox()
         self.spin_word_limit.setRange(0, 5000)
         self.spin_word_limit.setSpecialValueText("Không giới hạn")
@@ -234,3 +235,13 @@ class TabDashboard(QWidget):
             'gen_image': self.check_gen_image.isChecked(),
             'gen_video': self.check_gen_video.isChecked(),
         }
+    def browse_doc_file(self):
+        """Mở cửa sổ chọn file .txt"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            "Chọn File Tài Liệu Sản Phẩm", 
+            "", 
+           "Tài liệu (*.txt *.docx *.pdf);;All Files (*)"
+        )
+        if file_path:
+            self.input_doc_file.setText(file_path)

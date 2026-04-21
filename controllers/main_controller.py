@@ -142,7 +142,7 @@ class MainController(QObject):
     @pyqtSlot()
     def open_video_dialog(self):
         cfg = self.settings.get_config()
-        dialog = VideoSettingsDialog(cfg['veo_model'], cfg['veo_aspect'], cfg['veo_res'], cfg['veo_duration'], cfg['veo_negative'], self.view)
+        dialog = VideoSettingsDialog(cfg['veo_model'], cfg['veo_aspect'], cfg['veo_res'], cfg['veo_duration'], cfg['veo_negative'], cfg['veo_style'],cfg['veo_camera'],cfg['veo_ref_image'],self.view)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             model, aspect, res, duration, negative = dialog.get_settings()
             cfg.update({'veo_model': model, 'veo_aspect': aspect, 'veo_res': res, 'veo_duration': duration, 'veo_negative': negative})

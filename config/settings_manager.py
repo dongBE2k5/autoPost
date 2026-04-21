@@ -1,4 +1,3 @@
-# config/settings_manager.py
 import sqlite3
 import os
 import sys
@@ -21,6 +20,7 @@ os.makedirs(data_dir, exist_ok=True)
 # 3. Trỏ database vào thư mục data này
 DB_FILE = os.path.join(data_dir, 'settings.db')
 # ==========================================
+
 class SettingsManager:
     def __init__(self):
         # Đảm bảo thư mục data tồn tại trước khi tạo DB
@@ -70,7 +70,7 @@ class SettingsManager:
         # Cung cấp giá trị mặc định nếu chưa có trong DB
         return {
             "publish_immediately": settings_dict.get("publish_immediately", "1") == "1",
-            "system_prompt": settings_dict.get("system_prompt", default_sys_prompt), # <--- THÊM DÒNG NÀY
+            "system_prompt": settings_dict.get("system_prompt", default_sys_prompt),
             "gemini_key": settings_dict.get("gemini_key", ""),
             "gemini_model": settings_dict.get("gemini_model", "gemini-2.5-flash"),
             "tiktok_api": settings_dict.get("tiktok_api", ""),
@@ -87,7 +87,11 @@ class SettingsManager:
             "veo_aspect": settings_dict.get("veo_aspect", "16:9"),
             "veo_res": settings_dict.get("veo_res", "720p"),
             "veo_duration": settings_dict.get("veo_duration", "8"),
-            "veo_negative": settings_dict.get("veo_negative", "")
+            "veo_negative": settings_dict.get("veo_negative", ""),
+            # --- 3 DÒNG MỚI THÊM VÀO ---
+            "veo_style": settings_dict.get("veo_style", "Mặc định"),
+            "veo_camera": settings_dict.get("veo_camera", "Mặc định"),
+            "veo_ref_image": settings_dict.get("veo_ref_image", "")
         }
 
     def save_config(self, config_dict):
