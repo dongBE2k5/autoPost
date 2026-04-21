@@ -5,7 +5,7 @@ DefaultDirName={pf}\Komeify
 DefaultGroupName=Komeify
 OutputDir=Output
 OutputBaseFilename=Komeify_Setup_v1.0
-SetupIconFile=assets\logo.ico
+
 Compression=lzma
 SolidCompression=yes
 
