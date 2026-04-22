@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         # Chỉ tập trung build Windows bản xịn nhất
-        os: [windows-latest]
+        os: [windows-latest, macos-latest]
 
     steps:
     - name: Checkout code
