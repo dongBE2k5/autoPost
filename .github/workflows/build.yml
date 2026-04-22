@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         # Chỉ tập trung build Windows bản xịn nhất
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-13]
 
     steps:
     - name: Checkout code
@@ -79,14 +79,14 @@ jobs:
 
 
     - name: Create DMG File (Tạo bộ cài đặt macOS)
-      if: matrix.os == 'macos-latest'
+      if: matrix.os == 'macos-13'
       run: |
         echo "Đang đóng gói Komeify.app thành file .dmg..."
         mkdir -p Output
 
         hdiutil create -volname "Komeify" -srcfolder "Komeify.app" -ov -format UDZO "Output/Komeify_macOS.dmg"
     - name: Upload macOS Artifact
-      if: matrix.os == 'macos-latest'
+      if: matrix.os == 'macos-13'
       uses: actions/upload-artifact@v4
       with:
         name: Komeify-macOS-DMG
