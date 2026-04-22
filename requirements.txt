@@ -10,3 +10,5 @@ nuitka
 zstandard
 pyinstaller
 pillow
+pypdf
+python-docx
