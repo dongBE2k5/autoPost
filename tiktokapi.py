@@ -1,6 +1,15 @@
 import requests
 import time
 import random
+import os
+
+from dotenv import load_dotenv
+
+# Load variables from .env into the environment
+load_dotenv()
+
+# Access the variables
+API_TOKEN = os.getenv("TOKEN_TIKTOK")
 
 
 
@@ -33,11 +42,7 @@ payload = {
 
     "resultsPerPage": MAX_VIDEOS,
 
-    "proxyConfiguration": {
-        "useApifyProxy": True,
-        "apifyProxyGroups": ["RESIDENTIAL"],
-        "countryCode": "VN"
-    }
+    "proxyConfiguration":"VN"
 }
 
 res = requests.post(run_url, json=payload)

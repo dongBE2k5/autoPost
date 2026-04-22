@@ -8,10 +8,11 @@ class TikTokService:
     def __init__(self, apify_token):
         self.apify_token = apify_token
 
-    def fetch_trending_videos(self, keyword, max_videos, log_cb=print):
+    # THÊM THAM SỐ min_views=30000 VÀO ĐÂY
+    def fetch_trending_videos(self, keyword, max_videos, min_views=30000, log_cb=print):
         """
         Cào video TikTok. Tự động Fallback nếu cách 1 lỗi.
-        Trả về list các dict chứa link, desc, creator.
+        Có chức năng lọc theo lượt xem tối thiểu (min_views).
         """
         videos_data = []
         search_keyword = keyword if keyword else "viral"
@@ -22,10 +23,10 @@ class TikTokService:
             client = ApifyClient(self.apify_token)
             run_input = {
                 "trendType": "videos",
-                "maxItems": max_videos, 
-                "maxResults": max_videos,       
-                "resultsPerPage": max_videos,   
-                "limit": max_videos,            
+                "maxItems": max_videos * 2, # Lấy dư ra để lọc
+                "maxResults": max_videos * 2,       
+                "resultsPerPage": max_videos * 2,   
+                "limit": max_videos * 2,            
                 "countryCode": "VN",
                 "hashtagPeriod": "7",
                 "videoSortBy": "vv",
@@ -35,6 +36,8 @@ class TikTokService:
             run = client.actor("GULLsEZsAD69QFACQ").call(run_input=run_input)
             for item in client.dataset(run["defaultDatasetId"]).iterate_items():
                 v_link = item.get("TikTok URL_video", "")
+                
+                # Phương án A thường không trả về số view rõ ràng, nên ta ưu tiên lấy link trước
                 if v_link:
                     author_info = item.get("author", {})
                     creator = author_info.get("nickname", "Không xác định") if isinstance(author_info, dict) else "Không xác định"
@@ -50,10 +53,10 @@ class TikTokService:
                 raise Exception("Không tìm thấy video nào ở Phương án A.")
                 
         except Exception as e_primary:
-            # --- PHƯƠNG ÁN B (FALLBACK) ---
+            # --- PHƯƠNG ÁN B (FALLBACK VỚI LỌC VIEW) ---
             log_cb(f"⚠️ Phương án A lỗi ({str(e_primary)[:30]}). Chuyển sang Phương án B (Clockworks)...")
             
-            KEYWORDS = ["xuhuong", "trend", "fyp", "viral", "hot tiktok", "tiktok vietnam"]
+            KEYWORDS = ["xuhuong", "trend", "fyp", "viral", "hot tiktok", "tiktok vietnam","vietnam","xh"]
             fallback_keyword = keyword if keyword else random.choice(KEYWORDS)
             
             log_cb(f"-> [Fallback] Đang quét từ khóa: {fallback_keyword}")
@@ -61,13 +64,8 @@ class TikTokService:
 
             payload = {
                 "searchQueries": [fallback_keyword],
-                "resultsPerPage": max_videos * 2, 
+                "resultsPerPage": max_videos * 2, # Yêu cầu nhiều hơn để trừ hao những video bị lọc
                 "proxyCountryCode": "VN",
-                # "proxyConfiguration": {
-                #     "useApifyProxy": True,
-                #     "apifyProxyGroups": ["RESIDENTIAL"],
-                #     "countryCode": "VN"
-                # }
             }
 
             res = requests.post(run_url, json=payload)
@@ -94,22 +92,46 @@ class TikTokService:
             dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={self.apify_token}"
             
             fb_videos = requests.get(dataset_url).json()
-            log_cb(f"-> [Fallback] Lấy được {len(fb_videos)} video thô. Đang xử lý...")
+            log_cb(f"-> [Fallback] Lấy được {len(fb_videos)} video thô. Đang lọc view >= {min_views}...")
             
+            # --- LOGIC LỌC VIEW ---
             for v in fb_videos:
                 video_url = v.get("webVideoUrl")
+                views = v.get("playCount", 0)
+                
                 if not video_url: continue
+                
+                # Bỏ qua nếu view thấp hơn ngưỡng
+                if views < min_views:
+                    continue
 
                 videos_data.append({
                     "link": video_url,
                     "desc": v.get("text", "Không có mô tả"),
-                    "creator": v.get("authorMeta", {}).get("name", "Không xác định")
+                    "creator": v.get("authorMeta", {}).get("name", "Không xác định"),
+                    "views": views
                 })
                 if len(videos_data) >= max_videos:
                     break
 
+            # --- FALLBACK TẦNG 2: Nếu bộ lọc quá gắt khiến list rỗng ---
+            if not videos_data and fb_videos:
+                log_cb(f"⚠️ Không có video nào đạt {min_views} view. Đang tự động vớt video top đầu...")
+                for v in fb_videos:
+                    video_url = v.get("webVideoUrl")
+                    if not video_url: continue
+
+                    videos_data.append({
+                        "link": video_url,
+                        "desc": v.get("text", "Không có mô tả"),
+                        "creator": v.get("authorMeta", {}).get("name", "Không xác định"),
+                        "views": v.get("playCount", 0)
+                    })
+                    if len(videos_data) >= max_videos:
+                        break
+
             if not videos_data:
                 raise Exception("Không tìm thấy video TikTok nào (Cả 2 cách đều thất bại)!")
 
-        log_cb(f"B1 Xong: Đã chốt được {len(videos_data)} video an toàn.")
+        log_cb(f"B1 Xong: Đã chốt được {len(videos_data)} video chất lượng cao.")
         return videos_data
