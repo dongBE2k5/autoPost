@@ -63,3 +63,20 @@ jobs:
       with:
         name: Komeify-Windows-Setup
         path: Output/Komeify_Setup_v1.0.exe
+
+
+        
+    - name: Create DMG File (Tạo bộ cài đặt macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        echo "Đang đóng gói Komeify.app thành file .dmg..."
+        mkdir -p Output
+        # hdiutil là lệnh mặc định của máy Mac dùng để tạo file ảnh đĩa (.dmg)
+        hdiutil create -volname "Komeify" -srcfolder "Komeify.app" -ov -format UDZO "Output/Komeify_macOS.dmg"
+
+    - name: Upload macOS Artifact
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: Komeify-macOS-DMG
+        path: Output/Komeify_macOS.dmg
