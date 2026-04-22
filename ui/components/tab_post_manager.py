@@ -2,14 +2,14 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QTableWidget, QTableWidgetItem, QHeaderView, QLabel,
                              QAbstractItemView)
-from PySide6.QtCore import Qt, pyqtSignal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont
 import datetime
 
 class TabPostManager(QWidget):
     # Phát tín hiệu ra cho Controller xử lý
-    refresh_requested = pyqtSignal()
-    delete_requested = pyqtSignal(str) # Truyền Post ID
+    refresh_requested = Signal()
+    delete_requested = Signal(str) # Truyền Post ID
     
     def __init__(self):
         super().__init__()

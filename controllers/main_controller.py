@@ -1,6 +1,6 @@
 # controllers/main_controller.py
 import datetime
-from PySide6.QtCore import QObject, pyqtSlot, QThread, pyqtSignal
+from PySide6.QtCore import QObject, Slot, QThread, Signal
 from PySide6.QtWidgets import QFileDialog, QDialog
 
 # Import Services & Models
@@ -18,8 +18,8 @@ from ui.dialogs.post_manager import DraftsDialog, QueueDialog
 
 class PipelineWorker(QThread):
     """Worker chạy ngầm để không làm đơ UI khi gọi API"""
-    log_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal(list, str) 
+    log_signal = Signal(str)
+    finished_signal = Signal(list, str) 
 
     def __init__(self, config):
         super().__init__()
@@ -89,7 +89,7 @@ class MainController(QObject):
         
         
         # 2. Nút ở Tab Dashboard
-        self.view.tab_dashboard.btn_browse_file.clicked.connect(self.browse_document)
+        # self.view.tab_dashboard.btn_browse_file.clicked.connect(self.browse_document)
         self.view.tab_dashboard.btn_auto_pipeline.clicked.connect(self.handle_run_pipeline)
         
         self.view.tab_dashboard.btn_logo_settings.clicked.connect(self.open_logo_dialog)
@@ -112,7 +112,7 @@ class MainController(QObject):
         history_data = self.settings.get_history()
         self.view.tab_history.refresh_table(history_data)
 
-    @pyqtSlot()
+    @Slot()
     def save_settings(self):
         cfg = self.settings.get_config() 
         ui_settings = self.view.tab_settings.get_settings_data() # Lấy data từ TabSettings
@@ -120,7 +120,7 @@ class MainController(QObject):
         self.settings.save_config(cfg)
         self.view.show_notification("Lưu thành công! 💾", "Cấu hình đã được cập nhật.")
 
-    @pyqtSlot()
+    @Slot()
     def browse_document(self):
         file_path, _ = QFileDialog.getOpenFileName(self.view, "Chọn file SP", "", "Docs (*.txt *.docx *.csv)")
         if file_path:
@@ -129,7 +129,7 @@ class MainController(QObject):
     # ==========================================
     # CÁC HÀM XỬ LÝ MỞ DIALOG (POPUP)
     # ==========================================
-    @pyqtSlot()
+    @Slot()
     def open_logo_dialog(self):
         cfg = self.settings.get_config()
         dialog = LogoSettingsDialog(cfg['logo_path'], cfg['logo_pos'], cfg['logo_opacity'], cfg['logo_scale'], self.view)
@@ -139,7 +139,7 @@ class MainController(QObject):
             self.settings.save_config(cfg)
             self.view.show_notification("Thành công 🖼️", "Đã lưu cài đặt Logo.")
 
-    @pyqtSlot()
+    @Slot()
     def open_video_dialog(self):
         cfg = self.settings.get_config()
         dialog = VideoSettingsDialog(cfg['veo_model'], cfg['veo_aspect'], cfg['veo_res'], cfg['veo_duration'], cfg['veo_negative'], cfg['veo_style'],cfg['veo_camera'],cfg['veo_ref_image'],self.view)
@@ -149,7 +149,7 @@ class MainController(QObject):
             self.settings.save_config(cfg)
             self.view.show_notification("Thành công 🎬", "Đã lưu cài đặt Video AI.")
 
-    @pyqtSlot()
+    @Slot()
     def open_schedule_dialog(self):
         cfg = self.settings.get_config()
         dialog = ScheduleDialog(cfg['auto_az_times'], self.view)
@@ -158,7 +158,7 @@ class MainController(QObject):
             self.settings.save_config(cfg)
             self.view.show_notification("Cập nhật Lịch! 📅", "Đã lưu khung giờ chạy Bot.")
 
-    @pyqtSlot()
+    @Slot()
     def open_drafts_dialog(self):
         drafts_list_dicts = [d.to_dict() for d in self.settings.get_drafts()]
         dialog = DraftsDialog(drafts_list_dicts, self.view)
@@ -200,7 +200,7 @@ class MainController(QObject):
                                 content=q.get('content',''), image_path=q.get('image_path',''), video_path=q.get('video_path',''))
         self.settings.save_queue([dict_to_queue_obj(q) for q in queue_list_dicts])
 
-    @pyqtSlot()
+    @Slot()
     def open_queue_dialog(self):
         queue_list_dicts = [q.to_dict() for q in self.settings.get_queue()]
         dialog = QueueDialog(queue_list_dicts, self.view)
@@ -214,7 +214,7 @@ class MainController(QObject):
     # ==========================================
     # CÁC HÀM XỬ LÝ NGHIỆP VỤ CHÍNH
     # ==========================================
-    @pyqtSlot()
+    @Slot()
     def handle_run_pipeline(self):
         # 1. Lấy Config từ UI Dashboard
         ui_config = self.view.tab_dashboard.get_pipeline_config()
@@ -244,7 +244,7 @@ class MainController(QObject):
         self.pipeline_thread.log_signal.connect(self.view.tab_dashboard.add_log)
         self.pipeline_thread.finished_signal.connect(self.on_pipeline_finished)
         self.pipeline_thread.start()
-    @pyqtSlot(list, str)
+    @Slot(list, str)
     def on_pipeline_finished(self, drafts, error_msg):
         self.view.tab_dashboard.btn_auto_pipeline.setEnabled(True)
         if error_msg:
@@ -257,7 +257,7 @@ class MainController(QObject):
             self.settings.save_drafts(old_drafts)
             self.view.show_notification("Thành công! 🎉", f"Đã đẩy {len(drafts)} bài vào Kho Content.")
 
-    @pyqtSlot(object, str, bool)
+    @Slot(object, str, bool)
     def handle_post_now(self, draft_obj, time_str, is_auto):
         """Xử lý nút Đăng Ngay lên FB"""
         config = self.settings.get_config()
@@ -285,7 +285,7 @@ class MainController(QObject):
     # ==========================================
     # QUẢN LÝ FACEBOOK (GRAPH API)
     # ==========================================
-    @pyqtSlot()
+    @Slot()
     def handle_refresh_fb_posts(self):
         """Xử lý nút tải lại danh sách bài viết từ FB"""
         config = self.settings.get_config()
@@ -313,7 +313,7 @@ class MainController(QObject):
 
         QTimer.singleShot(100, fetch_worker)
 
-    @pyqtSlot(str)
+    @Slot(str)
     def handle_delete_fb_post(self, post_id):
         """Xử lý nút Xóa bài viết trên FB"""
         from PySide6.QtWidgets import QMessageBox
@@ -334,7 +334,7 @@ class MainController(QObject):
                     self.handle_refresh_fb_posts()
             except Exception as e:
                 self.view.show_notification("Lỗi xóa bài ❌", str(e), True)
-    @pyqtSlot(object, str, bool)
+    @Slot(object, str, bool)
     def handle_post_now(self, draft_obj, time_str, is_auto):
         """Xử lý nút Đăng Ngay lên FB"""
         config = self.settings.get_config()

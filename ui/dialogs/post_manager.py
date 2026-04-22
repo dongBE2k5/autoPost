@@ -5,7 +5,7 @@ import subprocess
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QTextEdit, QGroupBox, QMessageBox, QTimeEdit, 
                              QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QAbstractItemView, QSpinBox)
-from PySide6.QtCore import QTime, Qt, pyqtSignal
+from PySide6.QtCore import QTime, Qt, Signal
 from PySide6.QtGui import QFont, QColor, QPixmap
 from config.settings import MODERN_STYLE
 from ui.dialogs.schedule_settings import EditTimeDialog
@@ -104,8 +104,8 @@ class DraftDetailDialog(QDialog):
 
 
 class DraftsDialog(QDialog):
-    post_now_requested = pyqtSignal(dict) 
-    queue_requested = pyqtSignal(dict, str) 
+    post_now_requested = Signal(dict) 
+    queue_requested = Signal(dict, str) 
 
     def __init__(self, drafts_list, parent=None):
         super().__init__(parent)

@@ -1,7 +1,7 @@
 # ui/main_window.py
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QLabel, 
                              QInputDialog, QLineEdit, QSystemTrayIcon, QStyle)
-from PySide6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 
 from config.settings import MODERN_STYLE, ADMIN_PASSWORD
 from ui.dialogs.toast import CustomToast
@@ -14,7 +14,7 @@ from ui.components.tab_settings import TabSettings
 from ui.components.tab_post_manager import TabPostManager
 
 class MainWindow(QWidget):
-    request_post_now = pyqtSignal(object, str, bool) 
+    request_post_now = Signal(object, str, bool) 
     
     def __init__(self):
         super().__init__()
