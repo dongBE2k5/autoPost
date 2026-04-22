@@ -1,5 +1,5 @@
 # ui/components/tab_settings.py
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QLabel, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QLabel, 
                              QLineEdit, QComboBox, QPushButton, QCheckBox, QTextEdit)
 
 class TabSettings(QWidget):

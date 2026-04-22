@@ -1,10 +1,10 @@
 # ui/dialogs/schedule_settings.py
 import re
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QTimeEdit, QSpinBox, QTableWidget, 
                              QTableWidgetItem, QHeaderView, QAbstractItemView, QMessageBox)
-from PyQt6.QtCore import QTime, Qt
-from PyQt6.QtGui import QFont, QColor
+from PySide6.QtCore import QTime, Qt
+from PySide6.QtGui import QFont, QColor
 from config.settings import MODERN_STYLE
 
 class EditTimeDialog(QDialog):

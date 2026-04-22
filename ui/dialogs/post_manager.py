@@ -2,11 +2,11 @@
 import os
 import sys
 import subprocess
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QTextEdit, QGroupBox, QMessageBox, QTimeEdit, 
                              QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QAbstractItemView, QSpinBox)
-from PyQt6.QtCore import QTime, Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QColor, QPixmap
+from PySide6.QtCore import QTime, Qt, pyqtSignal
+from PySide6.QtGui import QFont, QColor, QPixmap
 from config.settings import MODERN_STYLE
 from ui.dialogs.schedule_settings import EditTimeDialog
 

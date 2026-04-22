@@ -1,4 +1,4 @@
-PyQt6
+PySide6
 apify-client
 yt-dlp
 imageio-ffmpeg

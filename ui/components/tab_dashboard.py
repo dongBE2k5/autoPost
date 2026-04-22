@@ -1,9 +1,9 @@
 # ui/components/tab_dashboard.py
 import os
-from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, 
+from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QTextEdit, QGroupBox, QSpinBox, QRadioButton, 
                              QButtonGroup, QFrame, QCheckBox, QFileDialog)
-from PyQt6.QtCore import Qt
+from PySide6.QtCore import Qt
 import datetime
 
 class TabDashboard(QWidget):

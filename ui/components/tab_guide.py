@@ -1,5 +1,5 @@
 # ui/components/tab_guide.py
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTextEdit
 
 class TabGuide(QWidget):
     def __init__(self):

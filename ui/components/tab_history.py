@@ -1,5 +1,5 @@
 # ui/components/tab_history.py
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
 
 class TabHistory(QWidget):
     def __init__(self):

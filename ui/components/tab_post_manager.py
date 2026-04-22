@@ -1,9 +1,9 @@
 # ui/components/tab_post_manager.py
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QTableWidget, QTableWidgetItem, QHeaderView, QLabel,
                              QAbstractItemView)
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont
+from PySide6.QtCore import Qt, pyqtSignal
+from PySide6.QtGui import QColor, QFont
 import datetime
 
 class TabPostManager(QWidget):

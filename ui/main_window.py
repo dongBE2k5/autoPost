@@ -1,7 +1,7 @@
 # ui/main_window.py
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QLabel, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QLabel, 
                              QInputDialog, QLineEdit, QSystemTrayIcon, QStyle)
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import pyqtSignal
 
 from config.settings import MODERN_STYLE, ADMIN_PASSWORD
 from ui.dialogs.toast import CustomToast

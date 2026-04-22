@@ -1,5 +1,5 @@
 # ui/dialogs/media_settings.py
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QTextEdit, QComboBox, QSpinBox, QFileDialog,
                              QGroupBox)
 from config.settings import MODERN_STYLE

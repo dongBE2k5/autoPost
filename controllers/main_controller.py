@@ -1,7 +1,7 @@
 # controllers/main_controller.py
 import datetime
-from PyQt6.QtCore import QObject, pyqtSlot, QThread, pyqtSignal
-from PyQt6.QtWidgets import QFileDialog, QDialog
+from PySide6.QtCore import QObject, pyqtSlot, QThread, pyqtSignal
+from PySide6.QtWidgets import QFileDialog, QDialog
 
 # Import Services & Models
 from services.facebook_service import FacebookService
@@ -296,7 +296,7 @@ class MainController(QObject):
         self.view.tab_post_manager.set_loading_state()
         
         # Tạm thời dùng QTimer để UI kịp render trạng thái Loading
-        import PyQt6.QtCore as QtCore
+        import PySide6.QtCore as QtCore
         QTimer = QtCore.QTimer
         
         def fetch_worker():
@@ -316,7 +316,7 @@ class MainController(QObject):
     @pyqtSlot(str)
     def handle_delete_fb_post(self, post_id):
         """Xử lý nút Xóa bài viết trên FB"""
-        from PyQt6.QtWidgets import QMessageBox
+        from PySide6.QtWidgets import QMessageBox
         
         # Cảnh báo an toàn
         reply = QMessageBox.warning(self.view, 'Cảnh báo nguy hiểm', 
