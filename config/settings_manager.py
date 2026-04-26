@@ -91,7 +91,18 @@ class SettingsManager:
             # --- 3 DÒNG MỚI THÊM VÀO ---
             "veo_style": settings_dict.get("veo_style", "Mặc định"),
             "veo_camera": settings_dict.get("veo_camera", "Mặc định"),
-            "veo_ref_image": settings_dict.get("veo_ref_image", "")
+            "veo_ref_image": settings_dict.get("veo_ref_image", ""),
+            
+            "dash_keyword": settings_dict.get("dash_keyword", ""),
+            "dash_max_videos": int(settings_dict.get("dash_max_videos", "1")),
+            "dash_ai_count": int(settings_dict.get("dash_ai_count", "1")),
+            "dash_topics": settings_dict.get("dash_topics", ""),
+            "dash_doc_file": settings_dict.get("dash_doc_file", ""),
+            "dash_custom_prompt": settings_dict.get("dash_custom_prompt", ""),
+            "dash_ignore": settings_dict.get("dash_ignore", ""),
+            "dash_word_limit": int(settings_dict.get("dash_word_limit", "0")),
+            "dash_gen_image": settings_dict.get("dash_gen_image", "False"),
+            "dash_gen_video": settings_dict.get("dash_gen_video", "False")
         }
 
     def save_config(self, config_dict):

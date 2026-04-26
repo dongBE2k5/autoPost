@@ -245,3 +245,17 @@ class TabDashboard(QWidget):
         )
         if file_path:
             self.input_doc_file.setText(file_path)
+    def load_config(self, cfg):
+        """Nạp dữ liệu đã lưu từ Database lên Giao diện"""
+        self.console_keyword.setText(cfg.get('dash_keyword', ''))
+        self.spin_max_videos.setValue(int(cfg.get('dash_max_videos', 1)))
+        self.spin_ai_count.setValue(int(cfg.get('dash_ai_count', 1)))
+        self.input_target_topics.setText(cfg.get('dash_topics', ''))
+        self.input_doc_file.setText(cfg.get('dash_doc_file', ''))
+        self.input_custom_prompt.setPlainText(cfg.get('dash_custom_prompt', ''))
+        self.input_ignore_keywords.setPlainText(cfg.get('dash_ignore', ''))
+        self.spin_word_limit.setValue(int(cfg.get('dash_word_limit', 0)))
+        
+        # Checkbox lưu dạng chuỗi "True"/"False" nên cần so sánh
+        self.check_gen_image.setChecked(cfg.get('dash_gen_image', 'False') == 'True')
+        self.check_gen_video.setChecked(cfg.get('dash_gen_video', 'False') == 'True')

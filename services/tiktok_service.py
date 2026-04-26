@@ -66,6 +66,7 @@ class TikTokService:
                 "searchQueries": [fallback_keyword],
                 "resultsPerPage": max_videos * 2, # Yêu cầu nhiều hơn để trừ hao những video bị lọc
                 "proxyCountryCode": "VN",
+                "searchSection": "/video",
             }
 
             res = requests.post(run_url, json=payload)

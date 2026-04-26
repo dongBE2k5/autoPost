@@ -78,6 +78,7 @@ class MainController(QObject):
         
         self.load_data_to_view()
         self.connect_signals()
+        self.view.tab_dashboard.load_config(self.settings.get_config())
 
     def connect_signals(self):
         """Gắn 'dây điện' cho toàn bộ nút bấm trên UI (Trỏ sâu vào từng Tab)"""
@@ -97,6 +98,8 @@ class MainController(QObject):
         self.view.tab_dashboard.btn_open_schedule.clicked.connect(self.open_schedule_dialog)
         self.view.tab_dashboard.btn_open_drafts.clicked.connect(self.open_drafts_dialog)
         self.view.tab_dashboard.btn_open_queue.clicked.connect(self.open_queue_dialog)
+        
+        self.view.tab_dashboard.btn_start_bot.clicked.connect(self.handle_toggle_bot)
         
         # 3. Nút ở Tab Quản lý Facebook
         self.view.tab_post_manager.refresh_requested.connect(self.handle_refresh_fb_posts)
@@ -219,6 +222,23 @@ class MainController(QObject):
         # 1. Lấy Config từ UI Dashboard
         ui_config = self.view.tab_dashboard.get_pipeline_config()
         
+        # --- BẮT ĐẦU: LƯU LẠI CÁC THÔNG SỐ NÀY VÀO DATABASE ---
+        current_cfg = self.settings.get_config()
+        current_cfg.update({
+            'dash_keyword': ui_config['custom_trend'],
+            'dash_max_videos': ui_config['max_videos'],
+            'dash_ai_count': ui_config['count'],
+            'dash_topics': ui_config['target_topics'],
+            'dash_doc_file': ui_config['doc_file_path'],
+            'dash_custom_prompt': ui_config['custom_prompt'],
+            'dash_ignore': ui_config['ignore_keywords'],
+            'dash_word_limit': ui_config['word_limit'],
+            'dash_gen_image': str(ui_config['gen_image']), # Ép kiểu bool thành chuỗi
+            'dash_gen_video': str(ui_config['gen_video'])
+        })
+        self.settings.save_config(current_cfg)
+        # --- KẾT THÚC LƯU DATABASE ---
+        
         # 2. Lấy Config từ UI Settings (Bao gồm cả AI Model)
         settings_config = self.view.tab_settings.get_settings_data()
         
@@ -229,8 +249,6 @@ class MainController(QObject):
         full_config = {**db_config, **settings_config, **ui_config} 
         
         # --- FIX LỖI Ở ĐÂY ---
-        # ApiPipelineWorker đang tìm key 'ai_model', nhưng ở settings ta lưu là 'gemini_model'
-        # Nên ta phải map (gán) nó sang cho đúng tên
         full_config['ai_model'] = full_config.get('gemini_model', 'gemini-2.5-flash')
         
         if not full_config.get('tiktok_api') or not full_config.get('gemini_key'):
@@ -369,3 +387,38 @@ class MainController(QObject):
                 
         except Exception as e:
             self.view.show_notification("Lỗi Facebook ❌", str(e), True)
+    @Slot()
+    def handle_toggle_bot(self):
+        """Xử lý giao diện và logic khi bấm nút Bật/Tắt Bot"""
+        # Lấy chữ hiện tại trên nút để xác định trạng thái
+        current_text = self.view.tab_dashboard.btn_start_bot.text()
+
+        if "BẬT" in current_text:
+            # 1. Đổi UI sang trạng thái ĐANG CHẠY (Nút đỏ, chữ Tắt)
+            self.view.tab_dashboard.btn_start_bot.setText("⏹️ TẮT BOT")
+            self.view.tab_dashboard.btn_start_bot.setStyleSheet("background-color: #ef4444; color: white; min-height: 50px; font-weight: bold;")
+            
+            self.view.tab_dashboard.lbl_bot_status.setText("🟢 ĐANG CHẠY")
+            self.view.tab_dashboard.lbl_bot_status.setStyleSheet("color: #22c55e; font-weight: bold; font-size: 14px;")
+            
+            self.view.tab_dashboard.add_log("🤖 [HỆ THỐNG] Bot đã được BẬT. Bắt đầu giám sát tiến trình...")
+            
+            # ----------------------------------------------------
+            # TODO: Nơi bạn sẽ gài logic QTimer hoặc Thread chạy ngầm
+            # Ví dụ: self.bot_timer.start(60000) # Quét hàng đợi mỗi 1 phút
+            # ----------------------------------------------------
+
+        else:
+            # 2. Đổi UI về trạng thái ĐÃ TẮT (Nút xanh, chữ Bật)
+            self.view.tab_dashboard.btn_start_bot.setText("🤖 BẬT BOT")
+            self.view.tab_dashboard.btn_start_bot.setStyleSheet("background-color: #16a34a; color: white; min-height: 50px; font-weight: bold;")
+            
+            self.view.tab_dashboard.lbl_bot_status.setText("🔴 ĐANG TẮT")
+            self.view.tab_dashboard.lbl_bot_status.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 14px;")
+            
+            self.view.tab_dashboard.add_log("⏹️ [HỆ THỐNG] Bot đã được TẮT.")
+            
+            # ----------------------------------------------------
+            # TODO: Dừng QTimer hoặc Thread chạy ngầm
+            # Ví dụ: self.bot_timer.stop()
+            # ----------------------------------------------------

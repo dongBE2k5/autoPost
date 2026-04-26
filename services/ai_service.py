@@ -99,6 +99,7 @@ class AIService:
                 audio = video_clip.audio
                 audio.write_audiofile(self.temp_audio, logger=None)
                 
+         
                 # Đóng file để nhả tài nguyên
                 audio.close()
                 video_clip.close()
