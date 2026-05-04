@@ -53,7 +53,7 @@ class AIService:
     # =========================
     # MAIN PIPELINE
     # =========================
-    def process_content_pipeline(self, videos_data, config):
+    def process_content_pipeline(self, videos_data, config, log_cb=None):
 
         if not self.client:
             yield {"type": "error", "message": "Thiếu Gemini API Key"}
@@ -75,13 +75,34 @@ class AIService:
             # Gọi hàm xóa an toàn thay vì os.remove() thông thường
             self.safe_remove(self.temp_video)
             self.safe_remove(self.temp_audio)
+            
+            # Dọn rác (các file part tải dở dang từ lần trước)
+            self.safe_remove(self.temp_video + ".part")
+            self.safe_remove(self.temp_video + ".ytdl")
 
             try:
+                last_log_time = [0]
+                def ytdl_hook(d):
+                    if d['status'] == 'downloading':
+                        current_time = time.time()
+                        if current_time - last_log_time[0] > 1.0: # Log 1 lần/giây
+                            percent_str = d.get('_percent_str', '0%')
+                            clean_percent = re.sub(r'\x1b[^m]*m', '', percent_str).strip()
+                            if log_cb:
+                                log_cb(f"⏳ Đang tải video {idx}: {clean_percent}")
+                            last_log_time[0] = current_time
+                    elif d['status'] == 'finished':
+                        if log_cb:
+                            log_cb(f"✅ Tải xong video {idx}, chuẩn bị tách âm thanh...")
+
                 ydl_opts = {
                     "outtmpl": self.temp_video,
                     "format": "best",
                     "quiet": True,
+                    "noresume": True,
+                    "overwrites": True,
                     "logger": self.SilentLogger(),
+                    "progress_hooks": [ytdl_hook],
                     # Tìm cookies.txt ở đúng thư mục gốc
                     "cookiefile": os.path.join(base_dir, "cookies.txt") if os.path.exists(os.path.join(base_dir, "cookies.txt")) else None
                 }
@@ -168,6 +189,7 @@ Trả về dạng:
         )
 
         trend_data = trend_resp.text.strip()
+        yield {"type": "log", "message": f"📊 Kết quả phân tích Trend từ AI:\n<pre style='font-family: inherit; font-size: 13px; color: #475569;'>{trend_data}</pre>"}
 
 # =========================
         # BƯỚC 3: VIẾT CONTENT 
@@ -362,3 +384,5 @@ YÊU CẦU:
                 "image_path": image_path,
                 "video_path": video_path
             })
+
+        yield {"type": "success", "data": final_posts}

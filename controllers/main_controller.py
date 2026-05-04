@@ -1,6 +1,6 @@
 # controllers/main_controller.py
 import datetime
-from PySide6.QtCore import QObject, Slot, QThread, Signal
+from PySide6.QtCore import QObject, Slot, QThread, Signal,QTimer
 from PySide6.QtWidgets import QFileDialog, QDialog
 
 # Import Services & Models
@@ -38,7 +38,7 @@ class PipelineWorker(QThread):
             )
 
             final_posts_data = []
-            for step_result in ai_svc.process_content_pipeline(videos_data, self.config):
+            for step_result in ai_svc.process_content_pipeline(videos_data, self.config, log_cb=self.log_signal.emit):
                 if step_result['type'] == 'log':
                     self.log_signal.emit(step_result['message'])
                 elif step_result['type'] == 'error':
@@ -76,9 +76,18 @@ class MainController(QObject):
         self.settings = settings_manager 
         self.pipeline_thread = None
         
+        self.bot_timer = QTimer(self)
+        self.bot_timer.timeout.connect(self.check_schedule_and_post)
+        
         self.load_data_to_view()
         self.connect_signals()
         self.view.tab_dashboard.load_config(self.settings.get_config())
+
+        # Tự động lưu cấu hình khi tắt ứng dụng
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app:
+            app.aboutToQuit.connect(self.save_settings_on_quit)
 
     def connect_signals(self):
         """Gắn 'dây điện' cho toàn bộ nút bấm trên UI (Trỏ sâu vào từng Tab)"""
@@ -120,8 +129,46 @@ class MainController(QObject):
         cfg = self.settings.get_config() 
         ui_settings = self.view.tab_settings.get_settings_data() # Lấy data từ TabSettings
         cfg.update(ui_settings)
+        
+        # --- BỔ SUNG LƯU DỮ LIỆU TỪ TAB DASHBOARD ---
+        ui_config = self.view.tab_dashboard.get_pipeline_config()
+        cfg.update({
+            'dash_keyword': ui_config['custom_trend'],
+            'dash_max_videos': ui_config['max_videos'],
+            'dash_ai_count': ui_config['count'],
+            'dash_topics': ui_config['target_topics'],
+            'dash_doc_file': ui_config['doc_file_path'],
+            'dash_custom_prompt': ui_config['custom_prompt'],
+            'dash_ignore': ui_config['ignore_keywords'],
+            'dash_word_limit': ui_config['word_limit'],
+            'dash_gen_image': str(ui_config['gen_image']), 
+            'dash_gen_video': str(ui_config['gen_video'])
+        })
+
         self.settings.save_config(cfg)
         self.view.show_notification("Lưu thành công! 💾", "Cấu hình đã được cập nhật.")
+
+    @Slot()
+    def save_settings_on_quit(self):
+        """Lưu tự động cấu hình khi đóng ứng dụng mà không cần hiển thị thông báo"""
+        cfg = self.settings.get_config() 
+        ui_settings = self.view.tab_settings.get_settings_data()
+        cfg.update(ui_settings)
+        
+        ui_config = self.view.tab_dashboard.get_pipeline_config()
+        cfg.update({
+            'dash_keyword': ui_config['custom_trend'],
+            'dash_max_videos': ui_config['max_videos'],
+            'dash_ai_count': ui_config['count'],
+            'dash_topics': ui_config['target_topics'],
+            'dash_doc_file': ui_config['doc_file_path'],
+            'dash_custom_prompt': ui_config['custom_prompt'],
+            'dash_ignore': ui_config['ignore_keywords'],
+            'dash_word_limit': ui_config['word_limit'],
+            'dash_gen_image': str(ui_config['gen_image']), 
+            'dash_gen_video': str(ui_config['gen_video'])
+        })
+        self.settings.save_config(cfg)
 
     @Slot()
     def browse_document(self):
@@ -270,36 +317,27 @@ class MainController(QObject):
             return
 
         if drafts:
+            # 1. Vẫn lưu vào kho nháp để làm backup (như cũ)
             old_drafts = self.settings.get_drafts()
             old_drafts.extend(drafts)
             self.settings.save_drafts(old_drafts)
-            self.view.show_notification("Thành công! 🎉", f"Đã đẩy {len(drafts)} bài vào Kho Content.")
+            
+            # --- 2. LOGIC MỚI BỔ SUNG CHO CHẾ ĐỘ AUTO A-Z ---
+            # Kiểm tra xem Bot có đang bật và đang ở chế độ A-Z không?
+            is_bot_running = "TẮT BOT" in self.view.tab_dashboard.btn_start_bot.text() 
+            is_az_mode = self.view.tab_dashboard.radio_mode_az.isChecked()
+            
+            if is_bot_running and is_az_mode:
+                self.view.tab_dashboard.add_log(f"⚡ [AUTO A-Z] Đã đẻ xong {len(drafts)} bài! Đang lấy bài xuất sắc nhất đem đi đăng...")
+                
+                # Lấy bài viết đầu tiên (xuất sắc nhất) vừa đẻ ra đem đăng ngay lập tức
+                post_to_publish = drafts[0]
+                self.handle_post_now(post_to_publish, "00:00", True) # Tham số True báo hiệu đây là Bot chạy
+            else:
+                # Nếu chạy bằng tay (Thủ công) thì chỉ thông báo thôi
+                self.view.show_notification("Thành công! 🎉", f"Đã đẩy {len(drafts)} bài vào Kho Content.")
 
-    @Slot(object, str, bool)
-    def handle_post_now(self, draft_obj, time_str, is_auto):
-        """Xử lý nút Đăng Ngay lên FB"""
-        config = self.settings.get_config()
-        fb_service = FacebookService(config.get('fb_id'), config.get('fb_token'))
-        mode_name = "Auto Bot" if is_auto else "Thủ công"
-        
-        self.view.tab_dashboard.add_log(f"[{mode_name.upper()}] Đang gửi dữ liệu lên Facebook...")
-        try:
-            success = fb_service.post_content(
-                content=draft_obj.content,
-                image_path=draft_obj.image_path,
-                video_path=draft_obj.video_path,
-                schedule_time_str=None,
-                log_cb=self.view.tab_dashboard.add_log
-            )
-            if success:
-                self.view.show_notification("Đăng thành công! 🚀", "Đã đẩy bài lên Fanpage.")
-                now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                self.settings.add_history_record(now_str, draft_obj.keyword, draft_obj.content, mode_name, draft_obj.image_path, draft_obj.video_path)
-                
-                self.view.tab_history.refresh_table(self.settings.get_history())
-                
-        except Exception as e:
-            self.view.show_notification("Lỗi Facebook ❌", str(e), True)
+
     # ==========================================
     # QUẢN LÝ FACEBOOK (GRAPH API)
     # ==========================================
@@ -403,10 +441,24 @@ class MainController(QObject):
             
             self.view.tab_dashboard.add_log("🤖 [HỆ THỐNG] Bot đã được BẬT. Bắt đầu giám sát tiến trình...")
             
-            # ----------------------------------------------------
-            # TODO: Nơi bạn sẽ gài logic QTimer hoặc Thread chạy ngầm
-            # Ví dụ: self.bot_timer.start(60000) # Quét hàng đợi mỗi 1 phút
-            # ----------------------------------------------------
+            # --- KIỂM TRA ĐIỀU KIỆN TRƯỚC KHI CHẠY ---
+            if self.view.tab_dashboard.radio_mode_queue.isChecked():
+                if not self.settings.get_queue():
+                    self.view.tab_dashboard.add_log("⚠️ [CẢNH BÁO] Hàng đợi đang rỗng! Bot sẽ không đăng bài cho đến khi có bài mới.")
+            elif self.view.tab_dashboard.radio_mode_az.isChecked():
+                cfg = self.settings.get_config()
+                if not cfg.get('auto_az_times', '').strip():
+                    self.view.tab_dashboard.add_log("⚠️ [CẢNH BÁO] Chưa cài đặt khung giờ Auto A-Z! Bot sẽ không tự chạy.")
+
+            # --- KHÓA LỰA CHỌN CHẾ ĐỘ (MÀU XÁM ĐI) ---
+            self.view.tab_dashboard.radio_mode_queue.setEnabled(False)
+            self.view.tab_dashboard.radio_mode_az.setEnabled(False)
+            
+            # Khởi động Timer: 60000 ms = 60 giây = 1 phút quét 1 lần
+            self.bot_timer.start(60000) 
+            
+            # Chạy quét ngay lập tức 1 lần (không cần đợi 1 phút)
+            self.check_schedule_and_post()
 
         else:
             # 2. Đổi UI về trạng thái ĐÃ TẮT (Nút xanh, chữ Bật)
@@ -418,7 +470,59 @@ class MainController(QObject):
             
             self.view.tab_dashboard.add_log("⏹️ [HỆ THỐNG] Bot đã được TẮT.")
             
-            # ----------------------------------------------------
-            # TODO: Dừng QTimer hoặc Thread chạy ngầm
-            # Ví dụ: self.bot_timer.stop()
-            # ----------------------------------------------------
+            # --- MỞ KHÓA LỰA CHỌN CHẾ ĐỘ TRỞ LẠI ---
+            self.view.tab_dashboard.radio_mode_queue.setEnabled(True)
+            self.view.tab_dashboard.radio_mode_az.setEnabled(True)
+            
+            # Tắt Timer
+            self.bot_timer.stop()
+
+
+    @Slot()
+    def check_schedule_and_post(self):
+        """Hàm này được QTimer gọi mỗi 1 phút để quét lịch"""
+        current_time_str = datetime.datetime.now().strftime("%H:%M")
+        
+        is_queue_mode = self.view.tab_dashboard.radio_mode_queue.isChecked()
+        is_az_mode = self.view.tab_dashboard.radio_mode_az.isChecked()
+        
+        # ==========================================
+        # CHẾ ĐỘ 1: BỐC TỪ HÀNG ĐỢI (Đã làm ở bước trước)
+        # ==========================================
+        if is_queue_mode:
+            queue = self.settings.get_queue()
+            if not queue: return 
+            
+            top_post = queue[0]
+            # Sửa lỗi: dùng <= để nếu trễ 1 vài phút bot vẫn đăng thay vì bỏ qua luôn
+            if top_post.time_queue <= current_time_str or (top_post.time_queue > "23:00" and current_time_str < "01:00"):
+                self.view.tab_dashboard.add_log(f"⏰ [HÀNG ĐỢI] Tới giờ {top_post.time_queue}! Đang lấy bài ra đăng...")
+                self.handle_post_now(top_post, "00:00", True)
+                queue.pop(0)
+                self.settings.save_queue(queue)
+
+        # ==========================================
+        # CHẾ ĐỘ 2: AUTO A-Z (Vũ khí tối thượng)
+        # ==========================================
+        elif is_az_mode:
+            cfg = self.settings.get_config()
+            az_times_str = cfg.get('auto_az_times', '') # VD: "08:00, 12:00, 19:30"
+            
+            # Tách chuỗi thành danh sách các khung giờ và đảm bảo format HH:MM (zero-padded)
+            az_times_list = []
+            for t in az_times_str.split(','):
+                t = t.strip()
+                if t:
+                    parts = t.split(':')
+                    if len(parts) == 2:
+                        try:
+                            formatted_time = f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+                            az_times_list.append(formatted_time)
+                        except: pass
+            
+            # Nếu giờ hiện tại trùng với giờ cài đặt & Pipeline chưa chạy
+            if current_time_str in az_times_list and self.view.tab_dashboard.btn_auto_pipeline.isEnabled():
+                self.view.tab_dashboard.add_log(f"🚀 [AUTO A-Z] Tới giờ vàng {current_time_str}! Bot đang kích hoạt chuỗi Pipeline...")
+                
+                # Ra lệnh cho phần mềm tự động chạy Pipeline y như có người bấm nút!
+                self.handle_run_pipeline()

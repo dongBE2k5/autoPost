@@ -64,9 +64,11 @@ class TikTokService:
 
             payload = {
                 "searchQueries": [fallback_keyword],
-                "resultsPerPage": max_videos * 2, # Yêu cầu nhiều hơn để trừ hao những video bị lọc
+                "resultsPerPage": max_videos, # Yêu cầu nhiều hơn để trừ hao những video bị lọc
                 "proxyCountryCode": "VN",
                 "searchSection": "/video",
+                "searchSorting": "1",
+                "searchDatePosted": "2",
             }
 
             res = requests.post(run_url, json=payload)
@@ -134,5 +136,10 @@ class TikTokService:
             if not videos_data:
                 raise Exception("Không tìm thấy video TikTok nào (Cả 2 cách đều thất bại)!")
 
-        log_cb(f"B1 Xong: Đã chốt được {len(videos_data)} video chất lượng cao.")
+        log_cb(f"✅ Xong: Đã chốt được {len(videos_data)} video chất lượng cao.")
+        for i, v in enumerate(videos_data, 1):
+            desc_short = v['desc'].replace('\n', ' ')
+            desc_short = desc_short[:60] + "..." if len(desc_short) > 60 else desc_short
+            log_cb(f"   🎬 Video {i} | Tác giả: {v['creator']} | Nội dung: {desc_short}")
+            
         return videos_data

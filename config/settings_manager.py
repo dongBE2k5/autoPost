@@ -3,6 +3,7 @@ import os
 import sys
 from config.settings import DB_FILE
 from models.post import ContentDraft
+from datetime import datetime
 
 # 1. Nhận diện chính xác thư mục gốc
 if getattr(sys, 'frozen', False) or '__compiled__' in globals():
@@ -138,6 +139,15 @@ class SettingsManager:
         except sqlite3.OperationalError:
             pass
         conn.close()
+        
+        # Sắp xếp các bản nháp theo thứ tự mới nhất lên đầu
+        def parse_timestamp(d):
+            try:
+                return datetime.strptime(d.timestamp, "%d/%m/%Y %H:%M:%S")
+            except:
+                return datetime.min
+
+        drafts.sort(key=parse_timestamp, reverse=True)
         return drafts
 
     def save_drafts(self, drafts_list):
