@@ -46,6 +46,8 @@ jobs:
               main.py
         elif [ "$RUNNER_OS" == "macOS" ]; then
             echo "Bắt đầu build cho macOS bằng Nuitka..."
+            export MACOSX_DEPLOYMENT_TARGET="13.0"
+            export CFLAGS="-mmacosx-version-min=13.0"
             python -m nuitka \
               --assume-yes-for-downloads \
               --standalone \
@@ -81,6 +83,9 @@ jobs:
     - name: Create DMG File (Tạo bộ cài đặt macOS)
       if: matrix.os == 'macos-13'
       run: |
+        echo "Đang cấu hình Info.plist để yêu cầu macOS tối thiểu là 13.0..."
+        /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" Komeify.app/Contents/Info.plist || /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 13.0" Komeify.app/Contents/Info.plist
+        
         echo "Đang đóng gói Komeify.app thành file .dmg..."
         mkdir -p Output
 
