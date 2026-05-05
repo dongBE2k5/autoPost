@@ -35,6 +35,10 @@ class PipelineWorker(QThread):
             ai_svc = AIService(self.config.get('gemini_key', ''))
 
             self.log_signal.emit("Bắt đầu quy trình Pipeline...")
+
+            def check_stop():
+                return self._is_stopped
+
             videos_data = tiktok_svc.fetch_trending_videos(
                 keyword=self.config.get('custom_trend'),
                 max_videos=self.config.get('max_videos', 1),
@@ -43,9 +47,6 @@ class PipelineWorker(QThread):
             )
 
             final_posts_data = []
-            def check_stop():
-                return self._is_stopped
-
             for step_result in ai_svc.process_content_pipeline(videos_data, self.config, log_cb=self.log_signal.emit, stop_cb=check_stop):
                 if self._is_stopped:
                     self.log_signal.emit("🛑 Pipeline đã bị dừng bởi người dùng.")
