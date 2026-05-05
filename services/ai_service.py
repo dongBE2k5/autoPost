@@ -189,7 +189,8 @@ Trả về dạng:
         )
 
         trend_data = trend_resp.text.strip()
-        yield {"type": "log", "message": f"📊 Kết quả phân tích Trend từ AI:\n<pre style='font-family: inherit; font-size: 13px; color: #475569;'>{trend_data}</pre>"}
+        trend_html = trend_data.replace('\n', '<br>')
+        yield {"type": "log", "message": f"📊 Kết quả phân tích Trend từ AI:<br><div style='color: #475569; font-size: 13px;'>{trend_html}</div>"}
 
 # =========================
         # BƯỚC 3: VIẾT CONTENT 

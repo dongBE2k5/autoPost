@@ -42,6 +42,7 @@ jobs:
               --nofollow-import-to=yt_dlp.extractor.lazy_extractors \
               --include-package=yt_dlp \
               --clang \
+              --disable-console \
               --output-filename=Komeify.exe \
               main.py
         elif [ "$RUNNER_OS" == "macOS" ]; then
@@ -56,8 +57,9 @@ jobs:
               --include-package=yt_dlp \
               --macos-create-app-bundle \
               --macos-app-name="Komeify" \
+              --output-filename=Komeify \
+              --disable-console \
               main.py
-        
         fi
 
     - name: Compile Inno Setup (Tạo bộ cài đặt)
@@ -78,8 +80,6 @@ jobs:
         name: Komeify-Windows-Setup
         path: Output/Komeify_Setup_v1.0.exe
 
-
-
     - name: Create DMG File (Tạo bộ cài đặt macOS)
       if: matrix.os == 'macos-13'
       run: |
@@ -90,6 +90,7 @@ jobs:
         mkdir -p Output
 
         hdiutil create -volname "Komeify" -srcfolder "Komeify.app" -ov -format UDZO "Output/Komeify_macOS.dmg"
+        
     - name: Upload macOS Artifact
       if: matrix.os == 'macos-13'
       uses: actions/upload-artifact@v4

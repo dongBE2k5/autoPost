@@ -57,6 +57,7 @@ class TabDashboard(QWidget):
                 background: #64748b;
             }
         """)
+        self.console_log.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         log_layout.addWidget(self.console_log)
         log_group.setLayout(log_layout)
         
@@ -142,7 +143,7 @@ class TabDashboard(QWidget):
         ai_layout.addLayout(row_logo)
         
         self.btn_auto_pipeline = QPushButton('⚡ BẮT ĐẦU CÀO & PHÂN TÍCH')
-        self.btn_auto_pipeline.setStyleSheet("background-color: #8b5cf6; color: white; padding: 15px; font-size: 15px;")
+        self.btn_auto_pipeline.setStyleSheet("background-color: #8b5cf6; color: white; padding: 15px; font-size: 15px; border-radius: 8px; border: none;")
         ai_layout.addWidget(self.btn_auto_pipeline)
         ai_group.setLayout(ai_layout)
         right_layout.addWidget(ai_group)
@@ -180,7 +181,7 @@ class TabDashboard(QWidget):
         self.lbl_bot_status = QLabel("🔴 ĐANG TẮT")
         self.lbl_bot_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.btn_start_bot = QPushButton('🤖 BẬT BOT')
-        self.btn_start_bot.setStyleSheet("background-color: #16a34a; color: white; min-height: 50px;")
+        self.btn_start_bot.setStyleSheet("background-color: #16a34a; color: white; min-height: 50px; border-radius: 8px; border: none;")
         action_col.addWidget(self.lbl_bot_status)
         action_col.addWidget(self.btn_start_bot)
         

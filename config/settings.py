@@ -38,8 +38,10 @@ MODERN_STYLE = (
     "QLineEdit, QTextEdit, QTimeEdit, QSpinBox, QComboBox { border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; background-color: #f8fafc; color: #0f172a; font-size: 14px; }\n"
     "QLineEdit:focus, QTextEdit:focus, QTimeEdit:focus, QSpinBox:focus, QComboBox:focus { border: 1.5px solid #3b82f6; background-color: #ffffff; }\n"
     
-    "QPushButton { border-radius: 6px; padding: 8px 16px; font-weight: bold; border: none; font-size: 14px; }\n"
-    "QPushButton:disabled { background-color: #e2e8f0; color: #94a3b8; }\n"
+    "QPushButton { background-color: #ffffff; border: 1.5px solid #cbd5e1; color: #1e293b; border-radius: 8px; padding: 8px 16px; font-weight: bold; font-size: 14px; }\n"
+    "QPushButton:hover { background-color: #f1f5f9; border-color: #94a3b8; }\n"
+    "QPushButton:pressed { background-color: #e2e8f0; }\n"
+    "QPushButton:disabled { background-color: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; }\n"
     
     "QTableWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; gridline-color: #f1f5f9; selection-background-color: #eff6ff; selection-color: #1e40af; }\n"
     "QHeaderView::section { background-color: #f8fafc; padding: 10px; border: none; border-bottom: 1.5px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-weight: 800; color: #334155; font-size: 13px; }\n"
