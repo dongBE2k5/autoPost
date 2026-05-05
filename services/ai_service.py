@@ -53,7 +53,8 @@ class AIService:
     # =========================
     # MAIN PIPELINE
     # =========================
-    def process_content_pipeline(self, videos_data, config, log_cb=None):
+    def process_content_pipeline(self, videos_data, config, log_cb=None, stop_cb=None):
+        if stop_cb and stop_cb(): return
 
         if not self.client:
             yield {"type": "error", "message": "Thiếu Gemini API Key"}
@@ -68,6 +69,7 @@ class AIService:
         yield {"type": "log", "message": "B1: Tải & bóc băng video..."}
 
         for idx, video in enumerate(videos_data, 1):
+            if stop_cb and stop_cb(): return
 
             if successful_count >= config.get("max_videos", 3):
                 break
@@ -165,6 +167,7 @@ Lời thoại: {text}
         # =========================
         # BƯỚC 2: PHÂN TÍCH TREND
         # =========================
+        if stop_cb and stop_cb(): return
         yield {"type": "log", "message": "B2: Phân tích thông điệp cốt lõi..."}
 
         trend_prompt = f"""
@@ -195,6 +198,7 @@ Trả về dạng:
 # =========================
         # BƯỚC 3: VIẾT CONTENT 
         # =========================
+        if stop_cb and stop_cb(): return
         yield {"type": "log", "message": "B3: Nạp tài liệu & Viết bài Facebook..."}
 
         system_prompt = config.get("system_prompt", "Bạn là copywriter chuyên nghiệp")
@@ -278,14 +282,23 @@ YÊU CẦU:
             yield {"type": "error", "message": "AI không tạo được nội dung"}
             return
 
-# =========================
+        yield {"type": "log", "message": f"✅ Đã viết xong {len(posts)} bài content!"}
+        for p_idx, p_content in enumerate(posts, 1):
+            preview = p_content[:150].replace('\n', ' ') + "..." if len(p_content) > 150 else p_content.replace('\n', ' ')
+            yield {"type": "log", "message": f"📝 Bài {p_idx}: <div style='color: #cbd5e1;'>{preview}</div>"}
+
+        # =========================
         # BƯỚC 4 & 5: XỬ LÝ MEDIA (CHỈ CHẠY KHI ĐƯỢC TICK CHỌN)
         # =========================
-        yield {"type": "log", "message": "B4: Xử lý Hình ảnh & Video (Nếu có)..."}
+        if config.get("gen_image") or config.get("gen_video"):
+            yield {"type": "log", "message": "B4: Xử lý Hình ảnh & Video..."}
+        else:
+            yield {"type": "log", "message": "✅ Đang viết content hoàn tất (Không tạo media)."}
 
         final_posts = []
 
         for idx, content in enumerate(posts):
+            if stop_cb and stop_cb(): return
             image_path = ""
             video_path = ""
             media_prompt = "" 

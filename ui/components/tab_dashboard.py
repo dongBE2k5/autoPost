@@ -213,6 +213,8 @@ class TabDashboard(QWidget):
             color = "#38bdf8" # Màu Xanh lơ (Cyan)
         elif "🪙" in msg:
             color = "#c084fc" # Màu Tím
+        elif "📝" in msg:
+            color = "#f472b6" # Màu Hồng
             
         html_msg = f"<span style='color: #64748b;'>[{time_str}]</span> <span style='color: {color};'>{msg}</span>"
         self.console_log.append(html_msg)
@@ -260,3 +262,32 @@ class TabDashboard(QWidget):
         # Checkbox lưu dạng chuỗi "True"/"False" nên cần so sánh
         self.check_gen_image.setChecked(cfg.get('dash_gen_image', 'False') == 'True')
         self.check_gen_video.setChecked(cfg.get('dash_gen_video', 'False') == 'True')
+
+    def set_ui_locked(self, locked):
+        """Khóa hoặc mở khóa các thao tác của người dùng"""
+        self.console_keyword.setReadOnly(locked)
+        self.spin_max_videos.setReadOnly(locked)
+        self.spin_ai_count.setReadOnly(locked)
+        self.input_target_topics.setReadOnly(locked)
+        self.btn_browse_file.setEnabled(not locked)
+        self.btn_clear_file.setEnabled(not locked)
+        self.input_custom_prompt.setReadOnly(locked)
+        self.input_ignore_keywords.setReadOnly(locked)
+        self.spin_word_limit.setReadOnly(locked)
+        self.check_gen_image.setEnabled(not locked)
+        self.check_gen_video.setEnabled(not locked)
+        self.btn_logo_settings.setEnabled(not locked)
+        self.btn_video_settings.setEnabled(not locked)
+        self.btn_open_drafts.setEnabled(not locked)
+        self.btn_open_queue.setEnabled(not locked)
+        self.btn_open_schedule.setEnabled(not locked)
+        
+    def set_analysis_state(self, is_analyzing):
+        """Chuyển đổi trạng thái giao diện khi đang phân tích"""
+        if is_analyzing:
+            self.btn_auto_pipeline.setText("⏹️ DỪNG PHÂN TÍCH")
+            self.btn_auto_pipeline.setStyleSheet("background-color: #ef4444; color: white; padding: 15px; font-size: 15px; border-radius: 8px; border: none; font-weight: bold;")
+        else:
+            self.btn_auto_pipeline.setText("⚡ BẮT ĐẦU CÀO & PHÂN TÍCH")
+            self.btn_auto_pipeline.setStyleSheet("background-color: #8b5cf6; color: white; padding: 15px; font-size: 15px; border-radius: 8px; border: none; font-weight: bold;")
+        self.btn_auto_pipeline.setEnabled(True)

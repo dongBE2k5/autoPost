@@ -24,6 +24,10 @@ class PipelineWorker(QThread):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self._is_stopped = False
+
+    def stop(self):
+        self._is_stopped = True
 
     def run(self):
         try:
@@ -34,11 +38,20 @@ class PipelineWorker(QThread):
             videos_data = tiktok_svc.fetch_trending_videos(
                 keyword=self.config.get('custom_trend'),
                 max_videos=self.config.get('max_videos', 1),
-                log_cb=self.log_signal.emit
+                log_cb=self.log_signal.emit,
+                stop_cb=check_stop
             )
 
             final_posts_data = []
-            for step_result in ai_svc.process_content_pipeline(videos_data, self.config, log_cb=self.log_signal.emit):
+            def check_stop():
+                return self._is_stopped
+
+            for step_result in ai_svc.process_content_pipeline(videos_data, self.config, log_cb=self.log_signal.emit, stop_cb=check_stop):
+                if self._is_stopped:
+                    self.log_signal.emit("🛑 Pipeline đã bị dừng bởi người dùng.")
+                    self.finished_signal.emit([], "Stopped")
+                    return
+                
                 if step_result['type'] == 'log':
                     self.log_signal.emit(step_result['message'])
                 elif step_result['type'] == 'error':
@@ -64,8 +77,12 @@ class PipelineWorker(QThread):
             self.finished_signal.emit(drafts, "")
 
         except Exception as e:
-            self.log_signal.emit(f"❌ Pipeline Lỗi: {str(e)}")
-            self.finished_signal.emit([], str(e))
+            if str(e) == "Stopped":
+                self.log_signal.emit("🛑 Pipeline đã bị dừng bởi người dùng.")
+                self.finished_signal.emit([], "Stopped")
+            else:
+                self.log_signal.emit(f"❌ Pipeline Lỗi: {str(e)}")
+                self.finished_signal.emit([], str(e))
 
 
 class MainController(QObject):
@@ -266,6 +283,13 @@ class MainController(QObject):
     # ==========================================
     @Slot()
     def handle_run_pipeline(self):
+        # Nếu đang chạy thì thực hiện DỪNG
+        if self.pipeline_thread and self.pipeline_thread.isRunning():
+            self.pipeline_thread.stop()
+            self.view.tab_dashboard.add_log("⏹️ Đang gửi yêu cầu dừng Pipeline...")
+            self.view.tab_dashboard.btn_auto_pipeline.setEnabled(False) # Chờ nó dừng hẳn
+            return
+
         # 1. Lấy Config từ UI Dashboard
         ui_config = self.view.tab_dashboard.get_pipeline_config()
         
@@ -302,7 +326,8 @@ class MainController(QObject):
             self.view.show_notification("Thiếu API Key ❌", "Vui lòng nhập API ở tab Thiết Lập!", True)
             return
 
-        self.view.tab_dashboard.btn_auto_pipeline.setEnabled(False)
+        self.view.tab_dashboard.set_analysis_state(True)
+        self.view.tab_dashboard.set_ui_locked(True)
         self.view.tab_dashboard.add_log("⚡ Đang chuẩn bị chạy Pipeline MVC...")
 
         self.pipeline_thread = PipelineWorker(full_config)
@@ -311,9 +336,17 @@ class MainController(QObject):
         self.pipeline_thread.start()
     @Slot(list, str)
     def on_pipeline_finished(self, drafts, error_msg):
-        self.view.tab_dashboard.btn_auto_pipeline.setEnabled(True)
+        self.view.tab_dashboard.set_analysis_state(False)
+        
+        is_bot_running = "TẮT BOT" in self.view.tab_dashboard.btn_start_bot.text()
+        if is_bot_running:
+            self.view.tab_dashboard.btn_auto_pipeline.setEnabled(False)
+        else:
+            self.view.tab_dashboard.set_ui_locked(False)
+
         if error_msg:
-            self.view.show_notification("Lỗi Pipeline ❌", error_msg, True)
+            if error_msg != "Stopped":
+                self.view.show_notification("Lỗi Pipeline ❌", error_msg, True)
             return
 
         if drafts:
@@ -450,9 +483,11 @@ class MainController(QObject):
                 if not cfg.get('auto_az_times', '').strip():
                     self.view.tab_dashboard.add_log("⚠️ [CẢNH BÁO] Chưa cài đặt khung giờ Auto A-Z! Bot sẽ không tự chạy.")
 
-            # --- KHÓA LỰA CHỌN CHẾ ĐỘ (MÀU XÁM ĐI) ---
+            # --- KHÓA LỰA CHỌN CHẾ ĐỘ VÀ GIAO DIỆN ---
             self.view.tab_dashboard.radio_mode_queue.setEnabled(False)
             self.view.tab_dashboard.radio_mode_az.setEnabled(False)
+            self.view.tab_dashboard.btn_auto_pipeline.setEnabled(False)
+            self.view.tab_dashboard.set_ui_locked(True)
             
             # Khởi động Timer: 60000 ms = 60 giây = 1 phút quét 1 lần
             self.bot_timer.start(60000) 
@@ -470,12 +505,19 @@ class MainController(QObject):
             
             self.view.tab_dashboard.add_log("⏹️ [HỆ THỐNG] Bot đã được TẮT.")
             
-            # --- MỞ KHÓA LỰA CHỌN CHẾ ĐỘ TRỞ LẠI ---
+            # --- MỞ KHÓA LỰA CHỌN CHẾ ĐỘ VÀ GIAO DIỆN TRỞ LẠI ---
             self.view.tab_dashboard.radio_mode_queue.setEnabled(True)
             self.view.tab_dashboard.radio_mode_az.setEnabled(True)
+            self.view.tab_dashboard.btn_auto_pipeline.setEnabled(True)
+            self.view.tab_dashboard.set_ui_locked(False)
             
             # Tắt Timer
             self.bot_timer.stop()
+
+            # --- DỪNG LUÔN PIPELINE NẾU ĐANG CHẠY ---
+            if self.pipeline_thread and self.pipeline_thread.isRunning():
+                self.pipeline_thread.stop()
+                self.view.tab_dashboard.add_log("⏹️ [HỆ THỐNG] Đang dừng tác vụ phân tích hiện tại...")
 
 
     @Slot()
@@ -509,19 +551,28 @@ class MainController(QObject):
             az_times_str = cfg.get('auto_az_times', '') # VD: "08:00, 12:00, 19:30"
             
             # Tách chuỗi thành danh sách các khung giờ và đảm bảo format HH:MM (zero-padded)
+            import re
             az_times_list = []
+            az_times_counts = {}
             for t in az_times_str.split(','):
-                t = t.strip()
-                if t:
-                    parts = t.split(':')
-                    if len(parts) == 2:
-                        try:
-                            formatted_time = f"{int(parts[0]):02d}:{int(parts[1]):02d}"
-                            az_times_list.append(formatted_time)
-                        except: pass
+                match = re.search(r"(\d{1,2}):(\d{1,2})", t)
+                if match:
+                    try:
+                        formatted_time = f"{int(match.group(1)):02d}:{int(match.group(2)):02d}"
+                        az_times_list.append(formatted_time)
+                        
+                        count_match = re.search(r"\(x(\d+)\)", t)
+                        if count_match:
+                            az_times_counts[formatted_time] = int(count_match.group(1))
+                    except: pass
             
             # Nếu giờ hiện tại trùng với giờ cài đặt & Pipeline chưa chạy
-            if current_time_str in az_times_list and self.view.tab_dashboard.btn_auto_pipeline.isEnabled():
+            is_pipeline_running = self.pipeline_thread is not None and self.pipeline_thread.isRunning()
+            if current_time_str in az_times_list and not is_pipeline_running:
+                # Cập nhật số lượng bài viết nếu có cấu hình (xN)
+                if current_time_str in az_times_counts:
+                    self.view.tab_dashboard.spin_ai_count.setValue(az_times_counts[current_time_str])
+                    
                 self.view.tab_dashboard.add_log(f"🚀 [AUTO A-Z] Tới giờ vàng {current_time_str}! Bot đang kích hoạt chuỗi Pipeline...")
                 
                 # Ra lệnh cho phần mềm tự động chạy Pipeline y như có người bấm nút!

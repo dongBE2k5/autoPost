@@ -9,7 +9,7 @@ class TikTokService:
         self.apify_token = apify_token
 
     # THÊM THAM SỐ min_views=30000 VÀO ĐÂY
-    def fetch_trending_videos(self, keyword, max_videos, min_views=30000, log_cb=print):
+    def fetch_trending_videos(self, keyword, max_videos, min_views=30000, log_cb=print, stop_cb=None):
         """
         Cào video TikTok. Tự động Fallback nếu cách 1 lỗi.
         Có chức năng lọc theo lượt xem tối thiểu (min_views).
@@ -18,6 +18,7 @@ class TikTokService:
         search_keyword = keyword if keyword else "viral"
 
         try:
+            if stop_cb and stop_cb(): raise Exception("Stopped")
             # --- PHƯƠNG ÁN A ---
             log_cb(f"B1: [Apify] Đang tìm {max_videos} video (Phương án A)...")
             client = ApifyClient(self.apify_token)
@@ -53,7 +54,9 @@ class TikTokService:
                 raise Exception("Không tìm thấy video nào ở Phương án A.")
                 
         except Exception as e_primary:
+            if str(e_primary) == "Stopped": raise e_primary
             # --- PHƯƠNG ÁN B (FALLBACK VỚI LỌC VIEW) ---
+            if stop_cb and stop_cb(): raise Exception("Stopped")
             log_cb(f"⚠️ Phương án A lỗi ({str(e_primary)[:30]}). Chuyển sang Phương án B (Clockworks)...")
             
             KEYWORDS = ["xuhuong", "trend", "fyp", "viral", "hot tiktok", "tiktok vietnam","vietnam","xh"]
@@ -81,6 +84,7 @@ class TikTokService:
             status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={self.apify_token}"
 
             while True:
+                if stop_cb and stop_cb(): raise Exception("Stopped")
                 status_res = requests.get(status_url).json()
                 status = status_res["data"]["status"]
                 log_cb(f"-> [Fallback] Trạng thái: {status} ⏳...")
