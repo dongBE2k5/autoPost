@@ -11,7 +11,7 @@ from models.post import ContentDraft
 
 # --- ĐÃ SỬA LỖI IMPORT Ở ĐÂY ---
 # Trỏ đúng vị trí các Dialog trong kiến trúc thư mục mới
-from ui.dialogs.media_settings import LogoSettingsDialog, VideoSettingsDialog
+from ui.dialogs.media_settings import LogoSettingsDialog, VideoSettingsDialog, ImageSettingsDialog
 from ui.dialogs.schedule_settings import ScheduleDialog
 from ui.dialogs.post_manager import DraftsDialog, QueueDialog
 
@@ -129,6 +129,7 @@ class MainController(QObject):
         # self.view.tab_dashboard.btn_browse_file.clicked.connect(self.browse_document)
         self.view.tab_dashboard.btn_auto_pipeline.clicked.connect(self.handle_run_pipeline)
         
+        self.view.tab_dashboard.btn_image_settings.clicked.connect(self.open_image_dialog)
         self.view.tab_dashboard.btn_logo_settings.clicked.connect(self.open_logo_dialog)
         self.view.tab_dashboard.btn_video_settings.clicked.connect(self.open_video_dialog)
         self.view.tab_dashboard.btn_open_schedule.clicked.connect(self.open_schedule_dialog)
@@ -212,7 +213,18 @@ class MainController(QObject):
     # CÁC HÀM XỬ LÝ MỞ DIALOG (POPUP)
     # ==========================================
     @Slot()
+    def open_image_dialog(self):
+        cfg = self.settings.get_config()
+        dialog = ImageSettingsDialog(cfg.get('dash_imagen_aspect', '1:1'), cfg.get('dash_imagen_style', 'Mặc định'), self.view)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            aspect, style = dialog.get_settings()
+            cfg.update({'dash_imagen_aspect': aspect, 'dash_imagen_style': style})
+            self.settings.save_config(cfg)
+            self.view.show_notification("Thành công 🎨", "Đã lưu cài đặt Hình Ảnh AI.")
+
+    @Slot()
     def open_logo_dialog(self):
+
         cfg = self.settings.get_config()
         dialog = LogoSettingsDialog(cfg['logo_path'], cfg['logo_pos'], cfg['logo_opacity'], cfg['logo_scale'], self.view)
         if dialog.exec() == QDialog.DialogCode.Accepted:

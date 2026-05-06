@@ -81,7 +81,7 @@ class TikTokService:
             payload = {
                 "commentsPerPost": 0,
                 "excludePinnedPosts": True,
-                "maxProfilesPerQuery": 2,
+                "maxProfilesPerQuery": 1,
                 "proxyCountryCode": "VN",
                 "resultsPerPage": max_videos /2, # Vẫn giữ linh hoạt số lượng video người dùng muốn
                 "scrapeRelatedVideos": True,

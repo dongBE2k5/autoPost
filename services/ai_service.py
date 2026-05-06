@@ -400,10 +400,18 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
                 yield {"type": "log", "message": f"🎨 Đang nghĩ ý tưởng ảnh cho bài {idx+1}..."}
                 
                 keyword_prompt = f"""
-                Bài viết: "{content}"
-                YÊU CẦU: Chỉ mô tả thứ nhìn thấy, Chủ thể + hành động + bối cảnh + ánh sáng/màu sắc. KHÔNG chữ.
-                Trả về 1 câu prompt tiếng Anh
+                Dựa trên bài viết Facebook sau: "{content}"
+                
+                Hãy tạo một Prompt tiếng Anh chuyên nghiệp để vẽ ảnh minh họa, tập trung vào 5 yếu tố:
+                1. Subject: Mô tả chi tiết ngoại hình, trang phục, tuổi tác của "ngôi sao" trong ảnh.
+                2. Action/Emotion: Hành động hoặc cảm xúc sống động của chủ thể.
+                3. Setting: Bối cảnh, môi trường xung quanh chi tiết.
+                4. Lighting/Color: Ánh sáng (Cinematic, Golden hour, Soft light...) và màu sắc (Vibrant, Pastel...).
+                5. Camera Angle: Góc máy và bố cục (Close-up, Wide shot, Top-down...).
+
+                YÊU CẦU: Chỉ mô tả hình ảnh, TUYỆT ĐỐI KHÔNG có chữ trong ảnh. Trả về duy nhất 1 câu prompt tiếng Anh.
                 """
+
                 try:
                     keyword_resp = self.client.models.generate_content(
                         model="gemini-2.5-flash",
@@ -411,11 +419,20 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
                     )
                     media_prompt = keyword_resp.text.strip()
                     
-                    yield {"type": "log", "message": f"⏳ Đang vẽ ảnh..."}
+                    style = config.get("dash_imagen_style", "Mặc định")
+                    aspect = config.get("dash_imagen_aspect", "1:1")
+                    
+                    final_media_prompt = media_prompt
+                    if style != "Mặc định":
+                        final_media_prompt += f", in {style} style"
+
+                    yield {"type": "log", "message": f"⏳ Đang vẽ ảnh ({aspect} - {style})..."}
                     img_resp = self.client.models.generate_content(
                         model="gemini-2.5-flash-image",
-                        contents=media_prompt
+                        contents=final_media_prompt,
+                        config=types.GenerateContentConfig(aspect_ratio=aspect)
                     )
+
 
                     img_data = None
                     try:

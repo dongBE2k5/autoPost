@@ -212,3 +212,58 @@ class LogoSettingsDialog(QDialog):
 
     def get_settings(self):
         return self.input_file.text(), self.combo_pos.currentText(), self.spin_opacity.value(), self.spin_scale.value()
+
+
+class ImageSettingsDialog(QDialog):
+    def __init__(self, aspect="1:1", style="Mặc định", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🎨 Cài đặt Tạo Hình Ảnh AI (Imagen 3)")
+        self.resize(500, 250)
+        self.setStyleSheet(MODERN_STYLE)
+
+        layout = QVBoxLayout(self)
+
+        # 1. Tỷ lệ khung hình
+        row_aspect = QHBoxLayout()
+        self.combo_aspect = QComboBox()
+        self.combo_aspect.addItems(["1:1", "16:9", "9:16", "4:3", "3:4"])
+        self.combo_aspect.setCurrentText(aspect)
+        row_aspect.addWidget(QLabel("Tỷ lệ khung hình:"))
+        row_aspect.addWidget(self.combo_aspect, stretch=1)
+        layout.addLayout(row_aspect)
+
+        # 2. Phong cách nghệ thuật
+        row_style = QHBoxLayout()
+        self.combo_style = QComboBox()
+        self.combo_style.addItems([
+            "Mặc định", "Photorealistic (Ảnh chụp siêu thực)", "Cinematic (Điện ảnh chuyên nghiệp)", 
+            "3D Render (Đồ họa 3D)", "Anime (Hoạt hình Nhật Bản)", "Digital Art (Nghệ thuật số)", 
+            "Oil Painting (Tranh sơn dầu)", "Watercolor (Tranh màu nước)"
+        ])
+
+        self.combo_style.setCurrentText(style)
+        row_style.addWidget(QLabel("Phong cách ảnh:"))
+        row_style.addWidget(self.combo_style, stretch=1)
+        layout.addLayout(row_style)
+
+        # 3. Ghi chú
+        lbl_hint = QLabel("<i>*Lưu ý: Phong cách sẽ được AI lồng ghép vào Prompt mô tả ảnh.</i>")
+        lbl_hint.setStyleSheet("color: #64748b; font-size: 11px;")
+        layout.addWidget(lbl_hint)
+
+        # NÚT ĐIỀU KHIỂN
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton("Hủy bỏ")
+        btn_cancel.clicked.connect(self.reject)
+        btn_save = QPushButton("💾 Lưu Cài Đặt Ảnh")
+        btn_save.setStyleSheet("background-color: #22c55e; color: white; font-weight: bold; padding: 8px 15px;")
+        btn_save.clicked.connect(self.accept)
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_save)
+        
+        layout.addStretch()
+        layout.addLayout(btn_layout)
+
+    def get_settings(self):
+        return self.combo_aspect.currentText(), self.combo_style.currentText()

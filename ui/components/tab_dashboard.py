@@ -209,15 +209,18 @@ class TabDashboard(QWidget):
         
         row_logo = QHBoxLayout()
         self.check_gen_image = QCheckBox("🎨 Tạo Ảnh (Image)")
+        self.btn_image_settings = QPushButton('⚙️ Cài Ảnh')
         self.btn_logo_settings = QPushButton('🖼️ Cài Logo')
         self.check_gen_video = QCheckBox("🎬 Tạo Video (Veo 3.1)")
         self.btn_video_settings = QPushButton('🎥 Cài Video')
         row_logo.addWidget(self.check_gen_image)
+        row_logo.addWidget(self.btn_image_settings)
         row_logo.addWidget(self.btn_logo_settings)
         row_logo.addWidget(self.check_gen_video)
         row_logo.addWidget(self.btn_video_settings)
         row_logo.addStretch()
         ai_layout.addLayout(row_logo)
+
         
         self.btn_auto_pipeline = QPushButton('⚡ BẮT ĐẦU CÀO & PHÂN TÍCH')
         self.btn_auto_pipeline.setStyleSheet("background-color: #8b5cf6; color: white; padding: 15px; font-size: 15px; border-radius: 8px; border: none; font-weight: bold; min-height: 50px;")
@@ -414,8 +417,10 @@ class TabDashboard(QWidget):
         self.spin_word_limit.setReadOnly(locked)
         self.check_gen_image.setEnabled(not locked)
         self.check_gen_video.setEnabled(not locked)
+        self.btn_image_settings.setEnabled(not locked)
         self.btn_logo_settings.setEnabled(not locked)
         self.btn_video_settings.setEnabled(not locked)
+
         self.btn_open_drafts.setEnabled(not locked)
         self.btn_open_queue.setEnabled(not locked)
         self.btn_open_schedule.setEnabled(not locked)

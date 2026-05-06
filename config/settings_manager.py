@@ -103,7 +103,10 @@ class SettingsManager:
             "dash_ignore": settings_dict.get("dash_ignore", ""),
             "dash_word_limit": int(settings_dict.get("dash_word_limit", "0")),
             "dash_gen_image": settings_dict.get("dash_gen_image", "False"),
-            "dash_gen_video": settings_dict.get("dash_gen_video", "False")
+            "dash_gen_video": settings_dict.get("dash_gen_video", "False"),
+            "dash_imagen_aspect": settings_dict.get("dash_imagen_aspect", "1:1"),
+            "dash_imagen_style": settings_dict.get("dash_imagen_style", "Mặc định")
+
         }
 
     def save_config(self, config_dict):
