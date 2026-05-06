@@ -39,12 +39,21 @@ class PipelineWorker(QThread):
             def check_stop():
                 return self._is_stopped
 
-            videos_data = tiktok_svc.fetch_trending_videos(
-                keyword=self.config.get('custom_trend'),
-                max_videos=self.config.get('max_videos', 1),
-                log_cb=self.log_signal.emit,
-                stop_cb=check_stop
-            )
+            use_tiktok = self.config.get('use_tiktok', True)
+
+            if use_tiktok:
+                self.log_signal.emit("📡 Chế độ TikTok: Đang cào video trending...")
+                videos_data = tiktok_svc.fetch_trending_videos(
+                    keyword=self.config.get('custom_trend'),
+                    max_videos=self.config.get('max_videos', 1),
+                    log_cb=self.log_signal.emit,
+                    stop_cb=check_stop,
+                    search_queries=self.config.get('search_queries') or None,
+                    hashtags=self.config.get('hashtags') or None
+                )
+            else:
+                self.log_signal.emit("🤖 Chế độ Gemini Only: Bỏ qua TikTok, dùng tài liệu sản phẩm trực tiếp.")
+                videos_data = []  # Không có video → ai_service sẽ dùng tài liệu sản phẩm
 
             final_posts_data = []
             for step_result in ai_svc.process_content_pipeline(videos_data, self.config, log_cb=self.log_signal.emit, stop_cb=check_stop):
@@ -151,11 +160,14 @@ class MainController(QObject):
         # --- BỔ SUNG LƯU DỮ LIỆU TỪ TAB DASHBOARD ---
         ui_config = self.view.tab_dashboard.get_pipeline_config()
         cfg.update({
-            'dash_keyword': ui_config['custom_trend'],
+            'dash_use_tiktok': str(ui_config.get('use_tiktok', False)),
+            'dash_keyword': '\n'.join(ui_config.get('search_queries', [ui_config.get('custom_trend', '')])),
             'dash_max_videos': ui_config['max_videos'],
             'dash_ai_count': ui_config['count'],
             'dash_topics': ui_config['target_topics'],
-            'dash_doc_file': ui_config['doc_file_path'],
+            'dash_hashtags': '\n'.join(ui_config.get('hashtags', [])),
+            'dash_search_queries': '\n'.join(ui_config.get('search_queries', [])),
+            'dash_doc_file': __import__('json').dumps(ui_config.get('doc_file_paths', [])),
             'dash_custom_prompt': ui_config['custom_prompt'],
             'dash_ignore': ui_config['ignore_keywords'],
             'dash_word_limit': ui_config['word_limit'],
@@ -175,11 +187,14 @@ class MainController(QObject):
         
         ui_config = self.view.tab_dashboard.get_pipeline_config()
         cfg.update({
-            'dash_keyword': ui_config['custom_trend'],
+            'dash_use_tiktok': str(ui_config.get('use_tiktok', False)),
+            'dash_keyword': '\n'.join(ui_config.get('search_queries', [ui_config.get('custom_trend', '')])),
             'dash_max_videos': ui_config['max_videos'],
             'dash_ai_count': ui_config['count'],
             'dash_topics': ui_config['target_topics'],
-            'dash_doc_file': ui_config['doc_file_path'],
+            'dash_hashtags': '\n'.join(ui_config.get('hashtags', [])),
+            'dash_search_queries': '\n'.join(ui_config.get('search_queries', [])),
+            'dash_doc_file': __import__('json').dumps(ui_config.get('doc_file_paths', [])),
             'dash_custom_prompt': ui_config['custom_prompt'],
             'dash_ignore': ui_config['ignore_keywords'],
             'dash_word_limit': ui_config['word_limit'],
@@ -190,9 +205,8 @@ class MainController(QObject):
 
     @Slot()
     def browse_document(self):
-        file_path, _ = QFileDialog.getOpenFileName(self.view, "Chọn file SP", "", "Docs (*.txt *.docx *.csv)")
-        if file_path:
-            self.view.tab_dashboard.input_doc_file.setText(file_path)
+        """Đã được thay thế bởi browse_doc_file trong TabDashboard."""
+        pass
 
     # ==========================================
     # CÁC HÀM XỬ LÝ MỞ DIALOG (POPUP)
@@ -297,11 +311,14 @@ class MainController(QObject):
         # --- BẮT ĐẦU: LƯU LẠI CÁC THÔNG SỐ NÀY VÀO DATABASE ---
         current_cfg = self.settings.get_config()
         current_cfg.update({
-            'dash_keyword': ui_config['custom_trend'],
+            'dash_use_tiktok': str(ui_config.get('use_tiktok', False)),
+            'dash_keyword': '\n'.join(ui_config.get('search_queries', [ui_config.get('custom_trend', '')])),
             'dash_max_videos': ui_config['max_videos'],
             'dash_ai_count': ui_config['count'],
             'dash_topics': ui_config['target_topics'],
-            'dash_doc_file': ui_config['doc_file_path'],
+            'dash_hashtags': '\n'.join(ui_config.get('hashtags', [])),
+            'dash_search_queries': '\n'.join(ui_config.get('search_queries', [])),
+            'dash_doc_file': __import__('json').dumps(ui_config.get('doc_file_paths', [])),
             'dash_custom_prompt': ui_config['custom_prompt'],
             'dash_ignore': ui_config['ignore_keywords'],
             'dash_word_limit': ui_config['word_limit'],
@@ -318,7 +335,18 @@ class MainController(QObject):
         db_config = self.settings.get_config()
         
         # 4. GỘP TẤT CẢ LẠI (Ưu tiên giao diện đè lên DB nếu có trùng)
-        full_config = {**db_config, **settings_config, **ui_config} 
+        full_config = {**db_config, **settings_config, **ui_config}
+
+        # Đảm bảo doc_file_paths luôn là list (parse lại từ JSON nếu bị lưu dạng string)
+        import json as _json
+        if not full_config.get('doc_file_paths'):
+            raw = full_config.get('dash_doc_file', '')
+            try:
+                parsed = _json.loads(raw) if raw and raw.startswith('[') else ([raw] if raw else [])
+            except Exception:
+                parsed = [raw] if raw else []
+            full_config['doc_file_paths'] = [p for p in parsed if p]
+            full_config['doc_file_path'] = full_config['doc_file_paths'][0] if full_config['doc_file_paths'] else ''
         
         # --- FIX LỖI Ở ĐÂY ---
         full_config['ai_model'] = full_config.get('gemini_model', 'gemini-2.5-flash')

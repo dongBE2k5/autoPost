@@ -9,10 +9,11 @@ class TikTokService:
         self.apify_token = apify_token
 
     # THÊM THAM SỐ min_views=30000 VÀO ĐÂY
-    def fetch_trending_videos(self, keyword, max_videos, min_views=30000, log_cb=print, stop_cb=None):
+    def fetch_trending_videos(self, keyword, max_videos, min_views=30000, log_cb=print, stop_cb=None, search_queries=None, hashtags=None):
         """
         Cào video TikTok. Tự động Fallback nếu cách 1 lỗi.
-        Có chức năng lọc theo lượt xem tối thiểu (min_views).
+        search_queries: list câu tìm kiếm người dùng đặt.
+        hashtags: list hashtag người dùng đặt.
         """
         videos_data = []
         search_keyword = keyword if keyword else "viral"
@@ -24,15 +25,19 @@ class TikTokService:
             client = ApifyClient(self.apify_token)
             run_input = {
                 "trendType": "videos",
-                "maxItems": max_videos * 2, # Lấy dư ra để lọc
-                "maxResults": max_videos * 2,       
-                "resultsPerPage": max_videos * 2,   
-                "limit": max_videos * 2,            
+                "maxItems": max_videos * 2,
+                "maxResults": max_videos * 2,
+                "resultsPerPage": max_videos * 2,
+                "limit": max_videos * 2,
                 "countryCode": "VN",
                 "hashtagPeriod": "7",
                 "videoSortBy": "vv",
                 "proxyConfiguration": { "useApifyProxy": True },
             }
+            # Thêm hashtags vào run_input nếu có
+            if hashtags:
+                run_input["hashtags"] = hashtags
+                log_cb(f"🏷️ Dùng hashtags tùy chỉnh: {', '.join(hashtags[:5])}{'...' if len(hashtags) > 5 else ''}")
 
             run = client.actor("GULLsEZsAD69QFACQ").call(run_input=run_input)
             for item in client.dataset(run["defaultDatasetId"]).iterate_items():
@@ -59,20 +64,42 @@ class TikTokService:
             if stop_cb and stop_cb(): raise Exception("Stopped")
             log_cb(f"⚠️ Phương án A lỗi ({str(e_primary)[:30]}). Chuyển sang Phương án B (Clockworks)...")
             
-            KEYWORDS = ["xuhuong", "trend", "fyp", "viral", "hot tiktok", "tiktok vietnam","vietnam","xh"]
-            fallback_keyword = keyword if keyword else random.choice(KEYWORDS)
-            
-            log_cb(f"-> [Fallback] Đang quét từ khóa: {fallback_keyword}")
+            DEFAULT_KEYWORDS = ["xuhuong", "trend", "fyp", "viral", "hot tiktok", "tiktok vietnam", "vietnam", "xh"]
+            fallback_keyword = keyword if keyword else random.choice(DEFAULT_KEYWORDS)
+
+            # Xây dựng danh sách search queries: ưu tiên của người dùng, fallback về keyword
+            if search_queries:
+                queries_to_use = search_queries
+                log_cb(f"🔍 Dùng {len(queries_to_use)} search queries tùy chỉnh.")
+            else:
+                queries_to_use = [fallback_keyword]
+                log_cb(f"-> [Fallback] Đang quét từ khóa: {fallback_keyword}")
+
             run_url = f"https://api.apify.com/v2/acts/clockworks~tiktok-scraper/runs?token={self.apify_token}"
 
+            # --- CẬP NHẬT PAYLOAD THEO CHUẨN MỚI NHẤT ---
             payload = {
-                "searchQueries": [fallback_keyword],
-                "resultsPerPage": max_videos, # Yêu cầu nhiều hơn để trừ hao những video bị lọc
+                "commentsPerPost": 0,
+                "excludePinnedPosts": True,
+                "maxProfilesPerQuery": 2,
                 "proxyCountryCode": "VN",
+                "resultsPerPage": max_videos /2, # Vẫn giữ linh hoạt số lượng video người dùng muốn
+                "scrapeRelatedVideos": True,
+                "searchQueries": queries_to_use, # Nhận keyword tìm kiếm động từ UI
                 "searchSection": "/video",
-                "searchSorting": "1",
-                "searchDatePosted": "2",
+                "shouldDownloadAvatars": False,
+                "shouldDownloadCovers": False,
+                "shouldDownloadMusicCovers": False,
+                "shouldDownloadSlideshowImages": False,
+                "shouldDownloadVideos": False,
+                "videoSearchDateFilter": "PAST_WEEK",
+                "videoSearchSorting": "MOST_RELEVANT"
             }
+            
+            # Bổ sung hashtags nếu người dùng có nhập
+            if hashtags:
+                payload["hashtags"] = hashtags
+
 
             res = requests.post(run_url, json=payload)
             data = res.json()
