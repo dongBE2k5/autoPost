@@ -399,6 +399,22 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
             if config.get("gen_image"):
                 yield {"type": "log", "message": f"🎨 Đang nghĩ ý tưởng ảnh cho bài {idx+1}..."}
                 
+                # Lấy các cài đặt thủ công nếu có
+                man_subject = config.get('dash_imagen_subject', '')
+                man_action = config.get('dash_imagen_action', '')
+                man_lighting = config.get('dash_imagen_lighting', '')
+                man_camera = config.get('dash_imagen_camera', '')
+                man_context = config.get('dash_imagen_context', '')
+
+                constraints = []
+                if man_subject: constraints.append(f"- Subject must be: {man_subject}")
+                if man_action: constraints.append(f"- Action/Emotion must be: {man_action}")
+                if man_lighting: constraints.append(f"- Lighting/Color must be: {man_lighting}")
+                if man_camera: constraints.append(f"- Camera Angle must be: {man_camera}")
+                if man_context: constraints.append(f"- Setting/Context must be: {man_context}")
+                
+                constraint_text = "\n".join(constraints) if constraints else "AI tự do sáng tạo dựa trên bài viết."
+
                 keyword_prompt = f"""
                 Dựa trên bài viết Facebook sau: "{content}"
                 
@@ -409,8 +425,12 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
                 4. Lighting/Color: Ánh sáng (Cinematic, Golden hour, Soft light...) và màu sắc (Vibrant, Pastel...).
                 5. Camera Angle: Góc máy và bố cục (Close-up, Wide shot, Top-down...).
 
+                YÊU CẦU ĐẶC BIỆT TỪ NGƯỜI DÙNG (ƯU TIÊN CAO NHẤT):
+                {constraint_text}
+
                 YÊU CẦU: Chỉ mô tả hình ảnh, TUYỆT ĐỐI KHÔNG có chữ trong ảnh. Trả về duy nhất 1 câu prompt tiếng Anh.
                 """
+
 
                 try:
                     keyword_resp = self.client.models.generate_content(
@@ -425,13 +445,18 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
                     final_media_prompt = media_prompt
                     if style != "Mặc định":
                         final_media_prompt += f", in {style} style"
+                    
+                    # Thêm tỷ lệ vào prompt thay vì config để tránh lỗi "Extra inputs are not permitted"
+                    if aspect and aspect != "1:1":
+                        final_media_prompt += f", {aspect} aspect ratio"
 
                     yield {"type": "log", "message": f"⏳ Đang vẽ ảnh ({aspect} - {style})..."}
                     img_resp = self.client.models.generate_content(
                         model="gemini-2.5-flash-image",
                         contents=final_media_prompt,
-                        config=types.GenerateContentConfig(aspect_ratio=aspect)
+                        config=types.GenerateContentConfig()
                     )
+
 
 
                     img_data = None

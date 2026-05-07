@@ -214,13 +214,39 @@ class MainController(QObject):
     # ==========================================
     @Slot()
     def open_image_dialog(self):
-        cfg = self.settings.get_config()
-        dialog = ImageSettingsDialog(cfg.get('dash_imagen_aspect', '1:1'), cfg.get('dash_imagen_style', 'Mặc định'), self.view)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            aspect, style = dialog.get_settings()
-            cfg.update({'dash_imagen_aspect': aspect, 'dash_imagen_style': style})
-            self.settings.save_config(cfg)
-            self.view.show_notification("Thành công 🎨", "Đã lưu cài đặt Hình Ảnh AI.")
+        try:
+            cfg = self.settings.get_config()
+            dialog = ImageSettingsDialog(
+                cfg.get('dash_imagen_aspect', '1:1'), 
+                cfg.get('dash_imagen_style', 'Mặc định'),
+                cfg.get('dash_imagen_subject', ''),
+                cfg.get('dash_imagen_action', ''),
+                cfg.get('dash_imagen_lighting', ''),
+                cfg.get('dash_imagen_camera', ''),
+                cfg.get('dash_imagen_context', ''),
+                self.view
+            )
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                try:
+                    aspect, style, subject, action, lighting, camera, context = dialog.get_settings()
+                    cfg.update({
+                        'dash_imagen_aspect': aspect, 
+                        'dash_imagen_style': style,
+                        'dash_imagen_subject': subject,
+                        'dash_imagen_action': action,
+                        'dash_imagen_lighting': lighting,
+                        'dash_imagen_camera': camera,
+                        'dash_imagen_context': context
+                    })
+                    self.settings.save_config(cfg)
+                    self.view.show_notification("Thành công 🎨", "Đã lưu cài đặt Hình Ảnh AI nâng cao.")
+                except Exception as e:
+                    self.view.show_notification("Lỗi 🎨", f"Lỗi khi lưu cài đặt: {str(e)}", is_error=True)
+                    print(f"[ERROR] Save image settings: {e}")
+        except Exception as e:
+            self.view.show_notification("Lỗi 🎨", f"Lỗi mở dialog cài đặt ảnh: {str(e)}", is_error=True)
+            print(f"[ERROR] Open image dialog: {e}")
+
 
     @Slot()
     def open_logo_dialog(self):

@@ -215,39 +215,168 @@ class LogoSettingsDialog(QDialog):
 
 
 class ImageSettingsDialog(QDialog):
-    def __init__(self, aspect="1:1", style="Mặc định", parent=None):
+    def __init__(self, aspect="1:1", style="Mặc định", subject="", action="", lighting="", camera="", context="", parent=None):
         super().__init__(parent)
         self.setWindowTitle("🎨 Cài đặt Tạo Hình Ảnh AI (Imagen 3)")
-        self.resize(500, 250)
+        self.resize(600, 600)
         self.setStyleSheet(MODERN_STYLE)
 
         layout = QVBoxLayout(self)
 
-        # 1. Tỷ lệ khung hình
+        # 1. Tỷ lệ & Phong cách
+        basic_group = QGroupBox("⚙️ Cơ bản")
+        basic_layout = QVBoxLayout()
+        
         row_aspect = QHBoxLayout()
         self.combo_aspect = QComboBox()
         self.combo_aspect.addItems(["1:1", "16:9", "9:16", "4:3", "3:4"])
         self.combo_aspect.setCurrentText(aspect)
         row_aspect.addWidget(QLabel("Tỷ lệ khung hình:"))
         row_aspect.addWidget(self.combo_aspect, stretch=1)
-        layout.addLayout(row_aspect)
-
-        # 2. Phong cách nghệ thuật
-        row_style = QHBoxLayout()
+        
         self.combo_style = QComboBox()
         self.combo_style.addItems([
             "Mặc định", "Photorealistic (Ảnh chụp siêu thực)", "Cinematic (Điện ảnh chuyên nghiệp)", 
             "3D Render (Đồ họa 3D)", "Anime (Hoạt hình Nhật Bản)", "Digital Art (Nghệ thuật số)", 
             "Oil Painting (Tranh sơn dầu)", "Watercolor (Tranh màu nước)"
         ])
-
         self.combo_style.setCurrentText(style)
-        row_style.addWidget(QLabel("Phong cách ảnh:"))
-        row_style.addWidget(self.combo_style, stretch=1)
-        layout.addLayout(row_style)
+        row_aspect.addWidget(QLabel("Phong cách:"))
+        row_aspect.addWidget(self.combo_style, stretch=1)
+        basic_layout.addLayout(row_aspect)
+        basic_group.setLayout(basic_layout)
+        layout.addWidget(basic_group)
+
+        # 2. Chi tiết nâng cao (Manual Prompting)
+        adv_group = QGroupBox("🎭 Chi tiết nội dung (Tùy chọn)")
+        adv_layout = QVBoxLayout()
+
+        # --- Chủ thể ---
+        row_subject = QHBoxLayout()
+        self.combo_subject = QComboBox()
+        self.combo_subject.addItems([
+            "-- Chọn --", 
+            "Phụ nữ trẻ", "Đàn ông trẻ", "Gia đình", " Cặp đôi", 
+            "Trẻ em", "Người cao tuổi", "Nhóm bạn",
+            "Sản phẩm thời trang", "Phụ kiện", "Sản phẩm công nghệ", 
+            "Thực phẩm/Đồ ăn", "Mỹ phẩm", "Nội thất", "Phương tiện",
+            "Khác"
+        ])
+        self.subject_custom = QLineEdit(subject)
+        self.subject_custom.setPlaceholderText("Nhập tùy chỉnh...")
+        self.subject_custom.setVisible(False)
+        # Kết nối signal trước khi setCurrentText
+        self.combo_subject.currentTextChanged.connect(self._on_subject_changed)
+        # Nếu giá trị không tìm thấy trong dropdown, select "Khác"
+        if subject and subject != "-- Chọn --":
+            self.combo_subject.setCurrentText(subject)
+            if self.combo_subject.currentText() != subject:  # Không tìm thấy
+                self.combo_subject.setCurrentText("Khác")
+                self.subject_custom.setVisible(True)
+        row_subject.addWidget(QLabel("Chủ thể:"))
+        row_subject.addWidget(self.combo_subject, stretch=1)
+        row_subject.addWidget(self.subject_custom, stretch=1)
+        adv_layout.addLayout(row_subject)
+
+        # --- Hành động ---
+        row_action = QHBoxLayout()
+        self.combo_action = QComboBox()
+        self.combo_action.addItems([
+            "-- Chọn --", "Mỉm cười rạng rỡ", "Tính toán suy nghĩ", "Gõ bàn phím", 
+            "Chạy nhanh", "Nằm yên tĩnh", "Ngồi yên tĩnh", "Nhảy vui vẻ",
+            "Được trưng bày", "Đang sử dụng", "Đang làm sạch", "Được xếp gọn","Không Có",
+            "Khác"
+        ])
+        self.action_custom = QLineEdit(action)
+        self.action_custom.setPlaceholderText("Nhập tùy chỉnh...")
+        self.action_custom.setVisible(False)
+        # Kết nối signal trước khi setCurrentText
+        self.combo_action.currentTextChanged.connect(self._on_action_changed)
+        # Nếu giá trị không tìm thấy trong dropdown, select "Khác"
+        if action and action != "-- Chọn --":
+            self.combo_action.setCurrentText(action)
+            if self.combo_action.currentText() != action:  # Không tìm thấy
+                self.combo_action.setCurrentText("Khác")
+                self.action_custom.setVisible(True)
+        row_action.addWidget(QLabel("Hành động:"))
+        row_action.addWidget(self.combo_action, stretch=1)
+        row_action.addWidget(self.action_custom, stretch=1)
+        adv_layout.addLayout(row_action)
+
+        # --- Ánh sáng/Màu ---
+        row_lighting = QHBoxLayout()
+        self.combo_lighting = QComboBox()
+        self.combo_lighting.addItems([
+            "-- Chọn --", "Ánh sáng điện ảnh", "Giờ vàng", "Màu sắc rực rỡ", 
+            "Ánh sáng tự nhiên", "Ánh sáng studio", "Mịn nhẹ", "Tương phản cao", "Khác"
+        ])
+        self.lighting_custom = QLineEdit(lighting)
+        self.lighting_custom.setPlaceholderText("Nhập tùy chỉnh...")
+        self.lighting_custom.setVisible(False)
+        # Kết nối signal trước khi setCurrentText
+        self.combo_lighting.currentTextChanged.connect(self._on_lighting_changed)
+        # Nếu giá trị không tìm thấy trong dropdown, select "Khác"
+        if lighting and lighting != "-- Chọn --":
+            self.combo_lighting.setCurrentText(lighting)
+            if self.combo_lighting.currentText() != lighting:  # Không tìm thấy
+                self.combo_lighting.setCurrentText("Khác")
+                self.lighting_custom.setVisible(True)
+        row_lighting.addWidget(QLabel("Ánh sáng/Màu:"))
+        row_lighting.addWidget(self.combo_lighting, stretch=1)
+        row_lighting.addWidget(self.lighting_custom, stretch=1)
+        adv_layout.addLayout(row_lighting)
+
+        # --- Góc máy ---
+        row_camera = QHBoxLayout()
+        self.combo_camera = QComboBox()
+        self.combo_camera.addItems([
+            "-- Chọn --", "Cận cảnh chi tiết", "Toàn cảnh rộng", "Góc nhìn trung bình", 
+            "Góc nhìn thấp", "Góc nhìn cao", "Nhìn từ trên cao", "Khác"
+        ])
+        self.camera_custom = QLineEdit(camera)
+        self.camera_custom.setPlaceholderText("Nhập tùy chỉnh...")
+        self.camera_custom.setVisible(False)
+        # Kết nối signal trước khi setCurrentText
+        self.combo_camera.currentTextChanged.connect(self._on_camera_changed)
+        # Nếu giá trị không tìm thấy trong dropdown, select "Khác"
+        if camera and camera != "-- Chọn --":
+            self.combo_camera.setCurrentText(camera)
+            if self.combo_camera.currentText() != camera:  # Không tìm thấy
+                self.combo_camera.setCurrentText("Khác")
+                self.camera_custom.setVisible(True)
+        row_camera.addWidget(QLabel("Góc máy:"))
+        row_camera.addWidget(self.combo_camera, stretch=1)
+        row_camera.addWidget(self.camera_custom, stretch=1)
+        adv_layout.addLayout(row_camera)
+
+        # --- Bối cảnh ---
+        row_context = QHBoxLayout()
+        self.combo_context = QComboBox()
+        self.combo_context.addItems([
+            "-- Chọn --", "Quán cà phê", "Văn phòng", "Nhà", "Đường phố", 
+            "Biển", "Rừng", "Thành phố", "Khác"
+        ])
+        self.context_custom = QLineEdit(context)
+        self.context_custom.setPlaceholderText("Nhập tùy chỉnh...")
+        self.context_custom.setVisible(False)
+        # Kết nối signal trước khi setCurrentText
+        self.combo_context.currentTextChanged.connect(self._on_context_changed)
+        # Nếu giá trị không tìm thấy trong dropdown, select "Khác"
+        if context and context != "-- Chọn --":
+            self.combo_context.setCurrentText(context)
+            if self.combo_context.currentText() != context:  # Không tìm thấy
+                self.combo_context.setCurrentText("Khác")
+                self.context_custom.setVisible(True)
+        row_context.addWidget(QLabel("Bối cảnh:"))
+        row_context.addWidget(self.combo_context, stretch=1)
+        row_context.addWidget(self.context_custom, stretch=1)
+        adv_layout.addLayout(row_context)
+
+        adv_group.setLayout(adv_layout)
+        layout.addWidget(adv_group)
 
         # 3. Ghi chú
-        lbl_hint = QLabel("<i>*Lưu ý: Phong cách sẽ được AI lồng ghép vào Prompt mô tả ảnh.</i>")
+        lbl_hint = QLabel("<i>*Lưu ý: Chọn 'Khác' để nhập tùy chỉnh. Các ô để trống AI sẽ tự động sáng tạo.</i>")
         lbl_hint.setStyleSheet("color: #64748b; font-size: 11px;")
         layout.addWidget(lbl_hint)
 
@@ -262,8 +391,68 @@ class ImageSettingsDialog(QDialog):
         btn_layout.addWidget(btn_cancel)
         btn_layout.addWidget(btn_save)
         
-        layout.addStretch()
         layout.addLayout(btn_layout)
 
+    def _on_subject_changed(self):
+        """Hiển thị ô tùy chỉnh khi chọn 'Khác'"""
+        if self.combo_subject.currentText() == "Khác":
+            self.subject_custom.setVisible(True)
+            self.subject_custom.setFocus()
+        else:
+            self.subject_custom.setVisible(False)
+            self.subject_custom.clear()
+
+    def _on_action_changed(self):
+        """Hiển thị ô tùy chỉnh khi chọn 'Khác'"""
+        if self.combo_action.currentText() == "Khác":
+            self.action_custom.setVisible(True)
+            self.action_custom.setFocus()
+        else:
+            self.action_custom.setVisible(False)
+            self.action_custom.clear()
+
+    def _on_lighting_changed(self):
+        """Hiển thị ô tùy chỉnh khi chọn 'Khác'"""
+        if self.combo_lighting.currentText() == "Khác":
+            self.lighting_custom.setVisible(True)
+            self.lighting_custom.setFocus()
+        else:
+            self.lighting_custom.setVisible(False)
+            self.lighting_custom.clear()
+
+    def _on_camera_changed(self):
+        """Hiển thị ô tùy chỉnh khi chọn 'Khác'"""
+        if self.combo_camera.currentText() == "Khác":
+            self.camera_custom.setVisible(True)
+            self.camera_custom.setFocus()
+        else:
+            self.camera_custom.setVisible(False)
+            self.camera_custom.clear()
+
+    def _on_context_changed(self):
+        """Hiển thị ô tùy chỉnh khi chọn 'Khác'"""
+        if self.combo_context.currentText() == "Khác":
+            self.context_custom.setVisible(True)
+            self.context_custom.setFocus()
+        else:
+            self.context_custom.setVisible(False)
+            self.context_custom.clear()
+
     def get_settings(self):
-        return self.combo_aspect.currentText(), self.combo_style.currentText()
+        # Lấy giá trị: nếu chọn "Khác" thì lấy từ ô tùy chỉnh, ngược lại lấy từ dropdown
+        subject = self.subject_custom.text().strip() if self.combo_subject.currentText() == "Khác" else (self.combo_subject.currentText() if self.combo_subject.currentText() != "-- Chọn --" else "")
+        action = self.action_custom.text().strip() if self.combo_action.currentText() == "Khác" else (self.combo_action.currentText() if self.combo_action.currentText() != "-- Chọn --" else "")
+        lighting = self.lighting_custom.text().strip() if self.combo_lighting.currentText() == "Khác" else (self.combo_lighting.currentText() if self.combo_lighting.currentText() != "-- Chọn --" else "")
+        camera = self.camera_custom.text().strip() if self.combo_camera.currentText() == "Khác" else (self.combo_camera.currentText() if self.combo_camera.currentText() != "-- Chọn --" else "")
+        context = self.context_custom.text().strip() if self.combo_context.currentText() == "Khác" else (self.combo_context.currentText() if self.combo_context.currentText() != "-- Chọn --" else "")
+
+        return (
+            self.combo_aspect.currentText(), 
+            self.combo_style.currentText(),
+            subject,
+            action,
+            lighting,
+            camera,
+            context
+        )
+

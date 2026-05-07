@@ -105,7 +105,13 @@ class SettingsManager:
             "dash_gen_image": settings_dict.get("dash_gen_image", "False"),
             "dash_gen_video": settings_dict.get("dash_gen_video", "False"),
             "dash_imagen_aspect": settings_dict.get("dash_imagen_aspect", "1:1"),
-            "dash_imagen_style": settings_dict.get("dash_imagen_style", "Mặc định")
+            "dash_imagen_style": settings_dict.get("dash_imagen_style", "Mặc định"),
+            "dash_imagen_subject": settings_dict.get("dash_imagen_subject", ""),
+            "dash_imagen_action": settings_dict.get("dash_imagen_action", ""),
+            "dash_imagen_lighting": settings_dict.get("dash_imagen_lighting", ""),
+            "dash_imagen_camera": settings_dict.get("dash_imagen_camera", ""),
+            "dash_imagen_context": settings_dict.get("dash_imagen_context", "")
+
 
         }
 
