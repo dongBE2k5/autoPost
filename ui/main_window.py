@@ -12,6 +12,7 @@ from ui.components.tab_guide import TabGuide
 from ui.components.tab_history import TabHistory
 from ui.components.tab_settings import TabSettings
 from ui.components.tab_post_manager import TabPostManager
+from ui.components.tab_tokens import TabTokens
 
 class MainWindow(QWidget):
     request_post_now = Signal(object, str, bool) 
@@ -37,12 +38,14 @@ class MainWindow(QWidget):
         self.tab_post_manager = TabPostManager() # <--- THÊM DÒNG NÀY
         self.tab_guide = TabGuide()
         self.tab_history = TabHistory()
+        self.tab_tokens = TabTokens()
         self.tab_settings = TabSettings()
         
         self.tab_widget.addTab(self.tab_dashboard, "Bảng Điều Khiển")
         self.tab_widget.addTab(self.tab_post_manager, "Quản lý Facebook")
         self.tab_widget.addTab(self.tab_guide, "Hướng Dẫn")
         self.tab_widget.addTab(self.tab_history, "Lịch sử Đăng")
+        self.tab_widget.addTab(self.tab_tokens, "📊 Token")
         self.tab_widget.addTab(self.tab_settings, "Thiết Lập")
 
         # self.tab_widget.currentChanged.connect(self.on_tab_changed)
@@ -52,7 +55,7 @@ class MainWindow(QWidget):
         self.root_layout.addWidget(self.status_label)
 
     def on_tab_changed(self, index):
-        if index == 4: # Tab Cài đặt
+        if index == 5: # Tab Cài đặt (đã dịch 1 vị trí vì thêm tab Token)
             password, ok = QInputDialog.getText(self, "Quản trị", "Mật khẩu: (admin)", QLineEdit.EchoMode.Password)
             if not ok or password != ADMIN_PASSWORD:
                 self.tab_widget.setCurrentIndex(0) 

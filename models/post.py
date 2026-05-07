@@ -2,7 +2,7 @@
 
 class ContentDraft:
     """Mô hình dữ liệu lưu trữ một bài nháp (Draft) hoặc Hàng đợi (Queue)"""
-    def __init__(self, keyword="", content="", image_path="", video_path="", timestamp="", time_queue=""):
+    def __init__(self, keyword="", content="", image_path="", video_path="", timestamp="", time_queue="", token_usage=None):
         self.keyword = keyword
         self.content = content
         self.image_path = image_path
@@ -13,6 +13,9 @@ class ContentDraft:
         
         # Dùng cho Queue (Giờ sẽ đăng - VD: "15:30")
         self.time_queue = time_queue
+        
+        # Token tracking
+        self.token_usage = token_usage or {}
 
     def to_dict(self):
         """Chuyển đổi thành Dict để dễ dàng tương thích với code cũ/Lưu DB"""
@@ -22,5 +25,6 @@ class ContentDraft:
             "image_path": self.image_path,
             "video_path": self.video_path,
             "timestamp": self.timestamp,
-            "time": self.time_queue
+            "time": self.time_queue,
+            "token_usage": self.token_usage
         }

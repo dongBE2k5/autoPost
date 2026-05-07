@@ -10,6 +10,7 @@ from google import genai
 from google.genai import types
 from docx import Document
 from pypdf import PdfReader
+from .token_tracker import TokenTracker
 
 # ==========================================
 # 1. ĐỊNH TUYẾN ĐƯỜNG DẪN PORTABLE CHUẨN
@@ -30,6 +31,8 @@ class AIService:
         # Gắn chặt file temp vào đúng thư mục data an toàn
         self.temp_video = os.path.join(data_dir, "temp_video.mp4")
         self.temp_audio = os.path.join(data_dir, "temp_audio.mp3")
+        # Khởi tạo Token Tracker
+        self.token_tracker = TokenTracker()
 
     class SilentLogger:
         def debug(self, msg): pass
@@ -52,10 +55,47 @@ class AIService:
                     pass
 
     # =========================
+    # TOKEN TRACKING
+    # =========================
+    def _track_tokens(self, response, operation):
+        """Theo dõi token sử dụng từ response của Gemini API"""
+        try:
+            if hasattr(response, 'usage_metadata'):
+                meta = response.usage_metadata
+                # Thử nhiều kiểu đặt tên thuộc tính khác nhau của các phiên bản SDK
+                input_tokens = getattr(meta, 'prompt_token_count', 
+                               getattr(meta, 'input_token_count', 
+                               getattr(meta, 'input_tokens', 0)))
+                
+                output_tokens = getattr(meta, 'candidates_token_count', 
+                                getattr(meta, 'output_token_count', 
+                                getattr(meta, 'output_tokens', 0)))
+                
+                self.token_tracker.add_tokens(operation, input_tokens, output_tokens)
+        except Exception:
+            pass
+
+
+    def get_token_stats(self):
+        """Lấy thống kê token đã sử dụng"""
+        return self.token_tracker.get_all_stats()
+    
+    def get_token_stats_text(self):
+        """Lấy văn bản thống kê token"""
+        return self.token_tracker.get_stats_text()
+    
+    def reset_token_tracker(self):
+        """Xóa tất cả thống kê token (dùng khi bắt đầu pipeline mới)"""
+        self.token_tracker.reset()
+
+    # =========================
     # MAIN PIPELINE
     # =========================
     def process_content_pipeline(self, videos_data, config, log_cb=None, stop_cb=None):
         if stop_cb and stop_cb(): return
+
+        # Reset token tracker khi bắt đầu pipeline mới
+        self.reset_token_tracker()
 
         if not self.client:
             yield {"type": "error", "message": "Thiếu Gemini API Key"}
@@ -167,6 +207,8 @@ Lời thoại: (Không có âm thanh)
                             model="gemini-2.5-flash",
                             contents=[audio_file, "Chuyển toàn bộ lời nói thành văn bản."],
                         )
+                        # Track tokens
+                        self._track_tokens(resp, "transcribe")
                         return resp.text.strip()
 
                     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -221,6 +263,9 @@ Trả về dạng:
                 model="gemini-2.5-flash",
                 contents=trend_prompt
             )
+            # Track tokens
+            self._track_tokens(trend_resp, "trend_analysis")
+            
             try:
                 trend_data = trend_resp.text.strip()
             except ValueError:
@@ -339,6 +384,8 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
             contents=write_prompt,
             config=types.GenerateContentConfig(temperature=0.8)
         )
+        # Track tokens
+        self._track_tokens(write_resp, "content_writing")
 
         # Fix Bug #3: Chống crash do Policy Violation
         try:
@@ -437,6 +484,9 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
                         model="gemini-2.5-flash",
                         contents=keyword_prompt
                     )
+                    # Track tokens
+                    self._track_tokens(keyword_resp, "image_prompt")
+                    
                     media_prompt = keyword_resp.text.strip()
                     
                     style = config.get("dash_imagen_style", "Mặc định")
@@ -456,6 +506,9 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
                         contents=final_media_prompt,
                         config=types.GenerateContentConfig()
                     )
+                    # Track tokens (nếu có hỗ trợ)
+                    self._track_tokens(img_resp, "image_generation")
+
 
 
 
@@ -559,4 +612,9 @@ YÊU CẦU ĐỊNH DẠNG ĐẦU RA (TUYỆT ĐỐI PHẢI TUÂN THỦ):
             yield {"type": "error", "message": f"❌ Toàn bộ {total_media_tasks} tiến trình tạo Media đều thất bại. Đã dừng pipeline!"}
             return
 
-        yield {"type": "success", "data": final_posts}
+        # Hiển thị thống kê token trước khi hoàn thành
+        token_stats_text = self.get_token_stats_text()
+        if token_stats_text:
+            yield {"type": "log", "message": f"<br><br><b>{token_stats_text.replace(chr(10), '<br>')}</b>"}
+
+        yield {"type": "success", "data": final_posts, "token_stats": self.get_token_stats()}

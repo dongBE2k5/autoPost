@@ -18,3 +18,5 @@ __pycache__/
 !requirements.txt
 /data/image
 /data
+!README.md
+*.md

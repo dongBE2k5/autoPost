@@ -19,7 +19,7 @@ from ui.dialogs.post_manager import DraftsDialog, QueueDialog
 class PipelineWorker(QThread):
     """Worker chạy ngầm để không làm đơ UI khi gọi API"""
     log_signal = Signal(str)
-    finished_signal = Signal(list, str) 
+    finished_signal = Signal(list, str, dict)  # Thêm dict cho token stats
 
     def __init__(self, config):
         super().__init__()
@@ -56,20 +56,22 @@ class PipelineWorker(QThread):
                 videos_data = []  # Không có video → ai_service sẽ dùng tài liệu sản phẩm
 
             final_posts_data = []
+            token_stats = {}
             for step_result in ai_svc.process_content_pipeline(videos_data, self.config, log_cb=self.log_signal.emit, stop_cb=check_stop):
                 if self._is_stopped:
                     self.log_signal.emit("🛑 Pipeline đã bị dừng bởi người dùng.")
-                    self.finished_signal.emit([], "Stopped")
+                    self.finished_signal.emit([], "Stopped", {})
                     return
                 
                 if step_result['type'] == 'log':
                     self.log_signal.emit(step_result['message'])
                 elif step_result['type'] == 'error':
                     self.log_signal.emit(f"❌ Lỗi AI: {step_result['message']}")
-                    self.finished_signal.emit([], step_result['message'])
+                    self.finished_signal.emit([], step_result['message'], {})
                     return
                 elif step_result['type'] == 'success':
                     final_posts_data = step_result['data']
+                    token_stats = step_result.get('token_stats', {})
 
             drafts = []
             current_time = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -81,18 +83,19 @@ class PipelineWorker(QThread):
                     content=post_dict.get('content', ''),
                     image_path=post_dict.get('image_path', ''),
                     video_path=post_dict.get('video_path', ''),
-                    timestamp=current_time
+                    timestamp=current_time,
+                    token_usage=token_stats
                 ))
 
-            self.finished_signal.emit(drafts, "")
+            self.finished_signal.emit(drafts, "", token_stats)
 
         except Exception as e:
             if str(e) == "Stopped":
                 self.log_signal.emit("🛑 Pipeline đã bị dừng bởi người dùng.")
-                self.finished_signal.emit([], "Stopped")
+                self.finished_signal.emit([], "Stopped", {})
             else:
                 self.log_signal.emit(f"❌ Pipeline Lỗi: {str(e)}")
-                self.finished_signal.emit([], str(e))
+                self.finished_signal.emit([], str(e), {})
 
 
 class MainController(QObject):
@@ -401,8 +404,9 @@ class MainController(QObject):
         self.pipeline_thread.log_signal.connect(self.view.tab_dashboard.add_log)
         self.pipeline_thread.finished_signal.connect(self.on_pipeline_finished)
         self.pipeline_thread.start()
-    @Slot(list, str)
-    def on_pipeline_finished(self, drafts, error_msg):
+
+    @Slot(list, str, dict)
+    def on_pipeline_finished(self, drafts, error_msg, token_stats=None):
         self.view.tab_dashboard.set_analysis_state(False)
         
         is_bot_running = "TẮT BOT" in self.view.tab_dashboard.btn_start_bot.text()
@@ -436,7 +440,6 @@ class MainController(QObject):
             else:
                 # Nếu chạy bằng tay (Thủ công) thì chỉ thông báo thôi
                 self.view.show_notification("Thành công! 🎉", f"Đã đẩy {len(drafts)} bài vào Kho Content.")
-
 
     # ==========================================
     # QUẢN LÝ FACEBOOK (GRAPH API)

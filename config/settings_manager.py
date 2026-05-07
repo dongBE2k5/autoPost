@@ -36,6 +36,7 @@ class SettingsManager:
         c.execute('''CREATE TABLE IF NOT EXISTS drafts (keyword TEXT, content TEXT, timestamp TEXT, image_path TEXT, video_path TEXT)''')
         c.execute('''CREATE TABLE IF NOT EXISTS queue_posts (time TEXT, keyword TEXT, content TEXT, image_path TEXT, video_path TEXT)''')
         c.execute('''CREATE TABLE IF NOT EXISTS history_posts (post_time TEXT, keyword TEXT, content TEXT, mode TEXT, image_path TEXT, video_path TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS token_stats (timestamp TEXT, operation TEXT, input_tokens INTEGER, output_tokens INTEGER)''')
         
         # Cập nhật schema cho các bản cũ (Tự động thêm cột nếu thiếu)
         try: c.execute('ALTER TABLE drafts ADD COLUMN image_path TEXT')
@@ -228,3 +229,39 @@ class SettingsManager:
         """)
         conn.commit()
         conn.close()
+
+    def add_token_stats(self, stats_dict):
+        """Thêm thống kê token mới vào CSDL"""
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        
+        # stats_dict dạng {"by_operation": {"transcribe": {"input": X, "output": Y}, ...}}
+        if "by_operation" in stats_dict:
+            for op, tokens in stats_dict["by_operation"].items():
+                input_t = tokens.get("input", 0)
+                output_t = tokens.get("output", 0)
+                if input_t > 0 or output_t > 0:
+                    c.execute("INSERT INTO token_stats VALUES (?, ?, ?, ?)",
+                              (timestamp, op, input_t, output_t))
+        conn.commit()
+        conn.close()
+        
+    def get_token_history(self):
+        """Lấy lịch sử sử dụng token"""
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        history = []
+        try:
+            for row in c.execute("SELECT timestamp, operation, input_tokens, output_tokens FROM token_stats ORDER BY timestamp DESC"):
+                history.append({
+                    "timestamp": row[0],
+                    "operation": row[1],
+                    "input": row[2],
+                    "output": row[3],
+                    "total": row[2] + row[3]
+                })
+        except sqlite3.OperationalError:
+            pass
+        conn.close()
+        return history
