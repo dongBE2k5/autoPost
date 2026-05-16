@@ -215,11 +215,14 @@ class LogoSettingsDialog(QDialog):
 
 
 class ImageSettingsDialog(QDialog):
-    def __init__(self, aspect="1:1", style="Mặc định", subject="", action="", lighting="", camera="", context="", parent=None):
+    def __init__(self, aspect="1:1", style="Mặc định", subject="", action="", lighting="", camera="", context="", parent=None, image_ids=None):
         super().__init__(parent)
         self.setWindowTitle("🎨 Cài đặt Tạo Hình Ảnh AI (Imagen 3)")
         self.resize(600, 600)
         self.setStyleSheet(MODERN_STYLE)
+        
+        self.selected_image_ids = image_ids or []  # Lưu list image_ids
+        self.image_service = None  # Sẽ được gắn từ Controller nếu cần
 
         layout = QVBoxLayout(self)
 
@@ -379,6 +382,19 @@ class ImageSettingsDialog(QDialog):
         lbl_hint = QLabel("<i>*Lưu ý: Chọn 'Khác' để nhập tùy chỉnh. Các ô để trống AI sẽ tự động sáng tạo.</i>")
         lbl_hint.setStyleSheet("color: #64748b; font-size: 11px;")
         layout.addWidget(lbl_hint)
+        
+        # 4. Chọn ảnh từ thư viện người dùng
+        user_image_group = QGroupBox("📸 Sử dụng Ảnh Người Dùng (Hỗ trợ nhiều ảnh)")
+        user_image_layout = QVBoxLayout()
+        btn_select_user_image = QPushButton("📸 Chọn ảnh từ thư viện")
+        btn_select_user_image.setStyleSheet("background-color: #06b6d4; color: white; font-weight: bold; padding: 10px 15px;")
+        btn_select_user_image.clicked.connect(self._on_select_user_image)
+        self.lbl_selected_image = QLabel(self._format_selected_images())
+        self.lbl_selected_image.setStyleSheet("color: #64748b; font-style: italic;")
+        user_image_layout.addWidget(btn_select_user_image)
+        user_image_layout.addWidget(self.lbl_selected_image)
+        user_image_group.setLayout(user_image_layout)
+        layout.addWidget(user_image_group)
 
         # NÚT ĐIỀU KHIỂN
         btn_layout = QHBoxLayout()
@@ -453,6 +469,44 @@ class ImageSettingsDialog(QDialog):
             action,
             lighting,
             camera,
-            context
+            context,
+            self.selected_image_ids  # Trả về list của image_ids
         )
+    
+    def _format_selected_images(self):
+        """Format display of selected images"""
+        if not self.selected_image_ids:
+            return "Chưa chọn ảnh"
+        
+        if len(self.selected_image_ids) == 1:
+            try:
+                image = self.image_service.get_image_by_id(self.selected_image_ids[0])
+                if image:
+                    return f"✅ Đã chọn: {image.file_name}"
+            except:
+                pass
+            return f"✅ Đã chọn: 1 ảnh"
+        
+        return f"✅ Đã chọn: {len(self.selected_image_ids)} ảnh"
+    
+    def _on_select_user_image(self):
+        """Mở dialog chọn ảnh từ thư viện (hỗ trợ chọn nhiều ảnh)"""
+        if not self.image_service:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Lỗi", "Thư viện ảnh chưa được khởi tạo!")
+            return
+        
+        from ui.dialogs.user_image_selector import UserImageSelectorDialog
+        dialog = UserImageSelectorDialog(self.image_service, multi_select=True, parent=self)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            image_ids = dialog.get_selected_images()
+            if image_ids:
+                self.selected_image_ids = image_ids
+                self.lbl_selected_image.setText(self._format_selected_images())
+                self.lbl_selected_image.setStyleSheet("color: #16a34a; font-weight: bold;")
+    
+    def set_image_service(self, service):
+        """Gắn ImageLibraryService"""
+        self.image_service = service
 

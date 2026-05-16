@@ -4,7 +4,7 @@ import sys
 import subprocess
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QTextEdit, QGroupBox, QMessageBox, QTimeEdit, 
-                             QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QAbstractItemView, QSpinBox)
+                             QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QAbstractItemView, QSpinBox)
 from PySide6.QtCore import QTime, Qt, Signal
 from PySide6.QtGui import QFont, QColor, QPixmap
 from config.settings import MODERN_STYLE
@@ -82,6 +82,14 @@ class DraftDetailDialog(QDialog):
         self.content_edit.setStyleSheet("font-size: 15px; line-height: 1.6;")
         editor_layout.addWidget(self.content_edit)
 
+        self.image_info_label = QLabel()
+        self.update_image_info_label()
+        self.btn_change_image = QPushButton('📁 Thêm / Thay ảnh minh họa')
+        self.btn_change_image.setStyleSheet("background-color: #38bdf8; color: white; min-height: 38px;")
+        self.btn_change_image.clicked.connect(self.choose_image)
+        editor_layout.addWidget(self.image_info_label)
+        editor_layout.addWidget(self.btn_change_image)
+
         btn_layout = QHBoxLayout()
         self.btn_save = QPushButton('💾 Lưu lại thay đổi')
         self.btn_save.setStyleSheet("background-color: #22c55e; color: white; min-height: 40px;")
@@ -101,6 +109,30 @@ class DraftDetailDialog(QDialog):
         self.draft_data["keyword"] = self.kw_edit.text().strip()
         self.draft_data["content"] = self.content_edit.toPlainText().strip()
         self.accept()
+
+    def update_image_info_label(self):
+        img_path = self.draft_data.get("image_path", "")
+        if img_path and os.path.exists(img_path):
+            self.image_info_label.setText(f"<b>Ảnh minh họa hiện tại:</b> {img_path}")
+        else:
+            self.image_info_label.setText("<b>Ảnh minh họa hiện tại:</b> Chưa có ảnh. Bạn có thể thêm ảnh để đăng kèm.")
+
+    def choose_image(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Chọn ảnh minh họa",
+            "",
+            "Ảnh (*.png *.jpg *.jpeg *.webp *.bmp);;Tất cả file (*)"
+        )
+        if path:
+            self.draft_data["image_path"] = path
+            self.update_image_info_label()
+            if hasattr(self, 'image_label') and os.path.exists(path):
+                pixmap = QPixmap(path)
+                if not pixmap.isNull():
+                    self.image_label.setPixmap(pixmap.scaled(450, 450, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                else:
+                    self.image_label.setText("⚠️ Không thể tải hình ảnh.")
 
 
 class DraftsDialog(QDialog):
@@ -198,7 +230,7 @@ class DraftsDialog(QDialog):
             chk_item = QTableWidgetItem()
             chk_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             chk_item.setCheckState(Qt.CheckState.Unchecked)
-            chk_item.setData(Qt.ItemDataRole.UserRole, d) 
+            chk_item.setData(Qt.ItemDataRole.UserRole, row)
             
             vid_path = d.get('video_path', '')
             img_path = d.get('image_path', '')
@@ -241,7 +273,7 @@ class DraftsDialog(QDialog):
     def filter_drafts(self, text):
         search_term = text.lower()
         for row in range(self.table_widget.rowCount()):
-            d_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            d_data = self.drafts_list[row]
             if search_term in d_data.get("keyword", "").lower() or search_term in d_data.get("content", "").lower():
                 self.table_widget.setRowHidden(row, False)
             else: 
@@ -249,11 +281,10 @@ class DraftsDialog(QDialog):
 
     def on_item_double_clicked(self, item):
         row = item.row()
-        draft_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        draft_data = self.drafts_list[row]
         dialog = DraftDetailDialog(draft_data, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.table_widget.setItem(row, 3, QTableWidgetItem(draft_data.get("keyword", "")))
-            self.table_widget.setItem(row, 4, QTableWidgetItem(draft_data.get("content", "").replace('\n', ' ')))
+            self.load_table_data()
 
     def queue_selected_posts(self):
         selected_rows = self.get_checked_rows()
@@ -261,7 +292,7 @@ class DraftsDialog(QDialog):
         start_time = self.draft_time_picker.time()
         interval_mins = self.spin_interval.value()
         for i, row in enumerate(selected_rows):
-            draft_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            draft_data = self.drafts_list[row]
             post_time = start_time.addSecs(i * interval_mins * 60)
             self.queue_requested.emit(draft_data, post_time.toString("HH:mm"))
             
@@ -275,7 +306,7 @@ class DraftsDialog(QDialog):
         selected_rows = self.get_checked_rows()
         if not selected_rows: return
         row = selected_rows[0] 
-        draft_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        draft_data = self.drafts_list[row]
         if QMessageBox.question(self, 'Xác nhận', 'Đăng ngay?') == QMessageBox.StandardButton.Yes:
             self.post_now_requested.emit(draft_data) 
             if draft_data in self.drafts_list: self.drafts_list.remove(draft_data)
@@ -286,7 +317,7 @@ class DraftsDialog(QDialog):
         if not selected_rows: return
         if QMessageBox.question(self, 'Xác nhận', f'Xóa {len(selected_rows)} bài?') == QMessageBox.StandardButton.Yes:
             for row in reversed(selected_rows):
-                draft_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
+                draft_data = self.drafts_list[row]
                 if draft_data in self.drafts_list: self.drafts_list.remove(draft_data) 
                 self.table_widget.removeRow(row)
             self.is_all_checked = False

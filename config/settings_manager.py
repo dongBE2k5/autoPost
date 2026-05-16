@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import sys
+import json
 from config.settings import DB_FILE
 from models.post import ContentDraft
 from datetime import datetime
@@ -37,21 +38,28 @@ class SettingsManager:
         c.execute('''CREATE TABLE IF NOT EXISTS queue_posts (time TEXT, keyword TEXT, content TEXT, image_path TEXT, video_path TEXT)''')
         c.execute('''CREATE TABLE IF NOT EXISTS history_posts (post_time TEXT, keyword TEXT, content TEXT, mode TEXT, image_path TEXT, video_path TEXT)''')
         c.execute('''CREATE TABLE IF NOT EXISTS token_stats (timestamp TEXT, operation TEXT, input_tokens INTEGER, output_tokens INTEGER)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS user_images (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, file_name TEXT, upload_date TEXT, file_size INTEGER)''')
         
         # Cập nhật schema cho các bản cũ (Tự động thêm cột nếu thiếu)
         try: c.execute('ALTER TABLE drafts ADD COLUMN image_path TEXT')
         except: pass
         try: c.execute('ALTER TABLE drafts ADD COLUMN video_path TEXT')
         except: pass
+        try: c.execute('ALTER TABLE drafts ADD COLUMN image_ids TEXT')
+        except: pass
         
         try: c.execute('ALTER TABLE queue_posts ADD COLUMN image_path TEXT')
         except: pass
         try: c.execute('ALTER TABLE queue_posts ADD COLUMN video_path TEXT')
         except: pass
+        try: c.execute('ALTER TABLE queue_posts ADD COLUMN image_ids TEXT')
+        except: pass
         
         try: c.execute('ALTER TABLE history_posts ADD COLUMN image_path TEXT')
         except: pass
         try: c.execute('ALTER TABLE history_posts ADD COLUMN video_path TEXT')
+        except: pass
+        try: c.execute('ALTER TABLE history_posts ADD COLUMN image_ids TEXT')
         except: pass
 
         conn.commit()
@@ -141,11 +149,27 @@ class SettingsManager:
         c = conn.cursor()
         drafts = []
         try:
-            for row in c.execute("SELECT keyword, content, timestamp, image_path, video_path FROM drafts"):
-                drafts.append(ContentDraft(
-                    keyword=row[0], content=row[1], timestamp=row[2], 
-                    image_path=row[3], video_path=row[4]
-                ))
+            c.execute("PRAGMA table_info(drafts)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if "image_ids" in columns:
+                for row in c.execute("SELECT keyword, content, timestamp, image_path, video_path, image_ids FROM drafts"):
+                    image_ids = []
+                    try:
+                        image_ids = json.loads(row[5]) if row[5] else []
+                    except (json.JSONDecodeError, TypeError):
+                        image_ids = []
+                    
+                    drafts.append(ContentDraft(
+                        keyword=row[0], content=row[1], timestamp=row[2], 
+                        image_path=row[3], video_path=row[4], image_ids=image_ids
+                    ))
+            else:
+                for row in c.execute("SELECT keyword, content, timestamp, image_path, video_path FROM drafts"):
+                    drafts.append(ContentDraft(
+                        keyword=row[0], content=row[1], timestamp=row[2], 
+                        image_path=row[3], video_path=row[4]
+                    ))
         except sqlite3.OperationalError:
             pass
         conn.close()
@@ -164,10 +188,21 @@ class SettingsManager:
         """Xóa trắng bảng cũ và lưu danh sách bản nháp mới"""
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
+        
+        # Check if image_ids column exists
+        c.execute("PRAGMA table_info(drafts)")
+        columns = [col[1] for col in c.fetchall()]
+        has_image_ids = "image_ids" in columns
+        
         c.execute("DELETE FROM drafts")
         for d in drafts_list:
-            c.execute("INSERT INTO drafts VALUES (?, ?, ?, ?, ?)", 
-                     (d.keyword, d.content, d.timestamp, d.image_path, d.video_path))
+            image_ids_json = json.dumps(d.image_ids) if d.image_ids else ""
+            if has_image_ids:
+                c.execute("INSERT INTO drafts (keyword, content, timestamp, image_path, video_path, image_ids) VALUES (?, ?, ?, ?, ?, ?)", 
+                         (d.keyword, d.content, d.timestamp, d.image_path, d.video_path, image_ids_json))
+            else:
+                c.execute("INSERT INTO drafts (keyword, content, timestamp, image_path, video_path) VALUES (?, ?, ?, ?, ?)", 
+                         (d.keyword, d.content, d.timestamp, d.image_path, d.video_path))
         conn.commit()
         conn.close()
 
@@ -177,11 +212,27 @@ class SettingsManager:
         c = conn.cursor()
         queue = []
         try:
-            for row in c.execute("SELECT time, keyword, content, image_path, video_path FROM queue_posts ORDER BY time ASC"):
-                queue.append(ContentDraft(
-                    time_queue=row[0], keyword=row[1], content=row[2], 
-                    image_path=row[3], video_path=row[4]
-                ))
+            c.execute("PRAGMA table_info(queue_posts)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if "image_ids" in columns:
+                for row in c.execute("SELECT time, keyword, content, image_path, video_path, image_ids FROM queue_posts ORDER BY time ASC"):
+                    image_ids = []
+                    try:
+                        image_ids = json.loads(row[5]) if row[5] else []
+                    except (json.JSONDecodeError, TypeError):
+                        image_ids = []
+                    
+                    queue.append(ContentDraft(
+                        time_queue=row[0], keyword=row[1], content=row[2], 
+                        image_path=row[3], video_path=row[4], image_ids=image_ids
+                    ))
+            else:
+                for row in c.execute("SELECT time, keyword, content, image_path, video_path FROM queue_posts ORDER BY time ASC"):
+                    queue.append(ContentDraft(
+                        time_queue=row[0], keyword=row[1], content=row[2], 
+                        image_path=row[3], video_path=row[4]
+                    ))
         except sqlite3.OperationalError:
             pass
         conn.close()
@@ -190,10 +241,21 @@ class SettingsManager:
     def save_queue(self, queue_list):
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
+        
+        # Check if image_ids column exists
+        c.execute("PRAGMA table_info(queue_posts)")
+        columns = [col[1] for col in c.fetchall()]
+        has_image_ids = "image_ids" in columns
+        
         c.execute("DELETE FROM queue_posts")
         for q in queue_list:
-            c.execute("INSERT INTO queue_posts VALUES (?, ?, ?, ?, ?)", 
-                     (q.time_queue, q.keyword, q.content, q.image_path, q.video_path))
+            image_ids_json = json.dumps(q.image_ids) if q.image_ids else ""
+            if has_image_ids:
+                c.execute("INSERT INTO queue_posts (time, keyword, content, image_path, video_path, image_ids) VALUES (?, ?, ?, ?, ?, ?)", 
+                         (q.time_queue, q.keyword, q.content, q.image_path, q.video_path, image_ids_json))
+            else:
+                c.execute("INSERT INTO queue_posts VALUES (?, ?, ?, ?, ?)", 
+                         (q.time_queue, q.keyword, q.content, q.image_path, q.video_path))
         conn.commit()
         conn.close()
 
@@ -203,22 +265,50 @@ class SettingsManager:
         c = conn.cursor()
         history = []
         try:
-            for row in c.execute("SELECT post_time, keyword, content, mode, image_path, video_path FROM history_posts"):
-                history.append({
-                    "post_time": row[0], "keyword": row[1], "content": row[2], 
-                    "mode": row[3], "image_path": row[4], "video_path": row[5]
-                })
+            c.execute("PRAGMA table_info(history_posts)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if "image_ids" in columns:
+                for row in c.execute("SELECT post_time, keyword, content, mode, image_path, video_path, image_ids FROM history_posts"):
+                    image_ids = []
+                    try:
+                        image_ids = json.loads(row[6]) if row[6] else []
+                    except (json.JSONDecodeError, TypeError):
+                        image_ids = []
+                    
+                    history.append({
+                        "post_time": row[0], "keyword": row[1], "content": row[2], 
+                        "mode": row[3], "image_path": row[4], "video_path": row[5], "image_ids": image_ids
+                    })
+            else:
+                for row in c.execute("SELECT post_time, keyword, content, mode, image_path, video_path FROM history_posts"):
+                    history.append({
+                        "post_time": row[0], "keyword": row[1], "content": row[2], 
+                        "mode": row[3], "image_path": row[4], "video_path": row[5]
+                    })
         except sqlite3.OperationalError:
             pass
         conn.close()
         return history
 
-    def add_history_record(self, post_time, keyword, content, mode, image_path="", video_path=""):
+    def add_history_record(self, post_time, keyword, content, mode, image_path="", video_path="", image_ids=None):
         """Thêm 1 record mới vào lịch sử, giới hạn 1000 dòng"""
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
-        c.execute("INSERT INTO history_posts VALUES (?, ?, ?, ?, ?, ?)", 
-                 (post_time, keyword, content, mode, image_path, video_path))
+        
+        # Check if image_ids column exists
+        c.execute("PRAGMA table_info(history_posts)")
+        columns = [col[1] for col in c.fetchall()]
+        has_image_ids = "image_ids" in columns
+        
+        image_ids_json = json.dumps(image_ids) if image_ids else ""
+        
+        if has_image_ids:
+            c.execute("INSERT INTO history_posts (post_time, keyword, content, mode, image_path, video_path, image_ids) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                     (post_time, keyword, content, mode, image_path, video_path, image_ids_json))
+        else:
+            c.execute("INSERT INTO history_posts VALUES (?, ?, ?, ?, ?, ?)", 
+                     (post_time, keyword, content, mode, image_path, video_path))
         
         # Tự động xóa các dòng cũ nếu vượt quá 1000 (Tránh làm nặng file DB)
         c.execute("""
@@ -264,4 +354,4 @@ class SettingsManager:
         except sqlite3.OperationalError:
             pass
         conn.close()
-        return history
+        return history

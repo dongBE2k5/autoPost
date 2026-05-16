@@ -45,7 +45,7 @@ class MainWindow(QWidget):
         self.tab_widget.addTab(self.tab_post_manager, "Quản lý Facebook")
         self.tab_widget.addTab(self.tab_guide, "Hướng Dẫn")
         self.tab_widget.addTab(self.tab_history, "Lịch sử Đăng")
-        self.tab_widget.addTab(self.tab_tokens, "📊 Token")
+        self.tab_widget.addTab(self.tab_tokens, "Token")
         self.tab_widget.addTab(self.tab_settings, "Thiết Lập")
 
         # self.tab_widget.currentChanged.connect(self.on_tab_changed)

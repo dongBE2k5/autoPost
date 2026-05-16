@@ -8,6 +8,11 @@ from config.settings_manager import SettingsManager
 from ui.main_window import MainWindow
 from controllers.main_controller import MainController
 
+# Import Services for Dependency Injection
+from services.facebook_service import FacebookService
+from services.scrapers import TikTokScraper
+from services.ai_service import AIService
+
 def main():
     # 1. Setup môi trường hệ thống
     setup_ffmpeg()
@@ -22,10 +27,31 @@ def main():
     # 4. Khởi tạo Giao diện (View)
     view = MainWindow()
 
-    # 5. Khởi tạo "Não bộ" điều phối (Controller) và gắn nó vào View & Model
-    controller = MainController(view=view, settings_manager=settings_manager)
+    # 5. Dependency Injection: Chuẩn bị Factory/Instance của các Services
+    # Đảo ngược phụ thuộc (D trong SOLID): Controller không tự tạo Service, nó được tiêm từ ngoài.
+    
+    # Factory cho TikTok (sẽ tạo TikTokScraper thay vì TikTokService cũ)
+    def tiktok_svc_factory(config):
+        return TikTokScraper(config.get('tiktok_api', ''))
 
-    # 6. Hiển thị giao diện và chạy vòng lặp sự kiện
+    # Factory cho AI
+    def ai_svc_factory(config):
+        return AIService(config.get('gemini_key', ''))
+
+    # Factory cho Facebook
+    def fb_svc_factory(fb_id, fb_token):
+        return FacebookService(fb_id, fb_token)
+
+    # 6. Khởi tạo "Não bộ" điều phối (Controller) và gắn nó vào View & Model & Services
+    controller = MainController(
+        view=view, 
+        settings_manager=settings_manager,
+        tiktok_svc_factory=tiktok_svc_factory,
+        ai_svc_factory=ai_svc_factory,
+        fb_svc_factory=fb_svc_factory
+    )
+
+    # 7. Hiển thị giao diện và chạy vòng lặp sự kiện
     view.show()
     sys.exit(app.exec())
 

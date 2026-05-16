@@ -1,29 +1,26 @@
 # controllers/main_controller.py
 import datetime
-from PySide6.QtCore import QObject, Slot, QThread, Signal,QTimer
+from PySide6.QtCore import QObject, Slot, QThread, Signal, QTimer
 from PySide6.QtWidgets import QFileDialog, QDialog
 
-# Import Services & Models
-from services.facebook_service import FacebookService
-from services.tiktok_service import TikTokService
-from services.ai_service import AIService
+# Import Models & Managers (Không khởi tạo Service trực tiếp ở đây nữa - Dependency Inversion)
 from models.post import ContentDraft
+from config.token_history_manager import TokenHistoryManager
 
-# --- ĐÃ SỬA LỖI IMPORT Ở ĐÂY ---
 # Trỏ đúng vị trí các Dialog trong kiến trúc thư mục mới
 from ui.dialogs.media_settings import LogoSettingsDialog, VideoSettingsDialog, ImageSettingsDialog
 from ui.dialogs.schedule_settings import ScheduleDialog
 from ui.dialogs.post_manager import DraftsDialog, QueueDialog
 
-
 class PipelineWorker(QThread):
     """Worker chạy ngầm để không làm đơ UI khi gọi API"""
     log_signal = Signal(str)
     finished_signal = Signal(list, str, dict)  # Thêm dict cho token stats
-
-    def __init__(self, config):
+    def __init__(self, config, tiktok_svc_factory, ai_svc_factory):
         super().__init__()
         self.config = config
+        self.tiktok_svc_factory = tiktok_svc_factory
+        self.ai_svc_factory = ai_svc_factory
         self._is_stopped = False
 
     def stop(self):
@@ -31,8 +28,9 @@ class PipelineWorker(QThread):
 
     def run(self):
         try:
-            tiktok_svc = TikTokService(self.config.get('tiktok_api', ''))
-            ai_svc = AIService(self.config.get('gemini_key', ''))
+            # Dependency Injection: Khởi tạo service thông qua factory được tiêm vào từ bên ngoài
+            tiktok_svc = self.tiktok_svc_factory(self.config)
+            ai_svc = self.ai_svc_factory(self.config)
 
             self.log_signal.emit("Bắt đầu quy trình Pipeline...")
 
@@ -100,11 +98,22 @@ class PipelineWorker(QThread):
 
 class MainController(QObject):
     """Controller chính điều phối luồng dữ liệu"""
-    def __init__(self, view, settings_manager):
+    def __init__(self, view, settings_manager, tiktok_svc_factory, ai_svc_factory, fb_svc_factory):
         super().__init__()
         self.view = view
         self.settings = settings_manager 
+        
+        # Nhận Dependency qua constructor
+        self.tiktok_svc_factory = tiktok_svc_factory
+        self.ai_svc_factory = ai_svc_factory
+        self.fb_svc_factory = fb_svc_factory
+        
         self.pipeline_thread = None
+        
+        # Khởi tạo Token History Manager
+        self.token_history_manager = TokenHistoryManager()
+        self.view.tab_tokens.set_token_manager(self.token_history_manager)
+        self.refresh_token_stats()
         
         self.bot_timer = QTimer(self)
         self.bot_timer.timeout.connect(self.check_schedule_and_post)
@@ -126,7 +135,11 @@ class MainController(QObject):
         self.view.tab_settings.btn_save_config.clicked.connect(self.save_settings)
         self.view.tab_settings.btn_open_cookie.clicked.connect(lambda: self.view.show_notification("Cookie", "Mở file cookies.txt"))
         
-        
+        # --- TOKEN STATS TAB ---
+        self.view.tab_tokens.btn_refresh_summary.clicked.connect(self.refresh_token_stats)
+        self.view.tab_tokens.btn_refresh_detail.clicked.connect(self.refresh_token_stats)
+        self.view.tab_tokens.btn_export.clicked.connect(self.export_token_stats)
+        self.view.tab_tokens.btn_clear.clicked.connect(self.clear_token_history)
         
         # 2. Nút ở Tab Dashboard
         # self.view.tab_dashboard.btn_browse_file.clicked.connect(self.browse_document)
@@ -219,6 +232,7 @@ class MainController(QObject):
     def open_image_dialog(self):
         try:
             cfg = self.settings.get_config()
+            
             dialog = ImageSettingsDialog(
                 cfg.get('dash_imagen_aspect', '1:1'), 
                 cfg.get('dash_imagen_style', 'Mặc định'),
@@ -229,6 +243,7 @@ class MainController(QObject):
                 cfg.get('dash_imagen_context', ''),
                 self.view
             )
+            
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 try:
                     aspect, style, subject, action, lighting, camera, context = dialog.get_settings()
@@ -400,7 +415,8 @@ class MainController(QObject):
         self.view.tab_dashboard.set_ui_locked(True)
         self.view.tab_dashboard.add_log("⚡ Đang chuẩn bị chạy Pipeline MVC...")
 
-        self.pipeline_thread = PipelineWorker(full_config)
+        # Truyền factory qua cho Worker để không vi phạm Dependency Inversion
+        self.pipeline_thread = PipelineWorker(full_config, self.tiktok_svc_factory, self.ai_svc_factory)
         self.pipeline_thread.log_signal.connect(self.view.tab_dashboard.add_log)
         self.pipeline_thread.finished_signal.connect(self.on_pipeline_finished)
         self.pipeline_thread.start()
@@ -425,6 +441,19 @@ class MainController(QObject):
             old_drafts = self.settings.get_drafts()
             old_drafts.extend(drafts)
             self.settings.save_drafts(old_drafts)
+            
+            # --- LƯỚI TOKEN STATS ---
+            if token_stats and self.token_history_manager:
+                total_tokens = token_stats.get("total", 0)
+                by_operation = token_stats.get("by_operation", {})
+                self.token_history_manager.save_token_usage(
+                    total_tokens=total_tokens,
+                    by_operation=by_operation,
+                    posts_count=len(drafts),
+                    videos_count=len([d for d in drafts if d.video_path])
+                )
+                # Làm mới tab thống kê
+                self.refresh_token_stats()
             
             # --- 2. LOGIC MỚI BỔ SUNG CHO CHẾ ĐỘ AUTO A-Z ---
             # Kiểm tra xem Bot có đang bật và đang ở chế độ A-Z không?
@@ -460,7 +489,7 @@ class MainController(QObject):
         
         def fetch_worker():
             try:
-                fb_service = FacebookService(config.get('fb_id'), config.get('fb_token'))
+                fb_service = self.fb_svc_factory(config.get('fb_id'), config.get('fb_token'))
                 posts = fb_service.get_published_posts(limit=50) # Lấy 50 bài mới nhất
                 self.view.tab_post_manager.populate_table(posts)
                 self.view.show_notification("Tải hoàn tất 🔄", f"Lấy thành công {len(posts)} bài viết.")
@@ -486,7 +515,7 @@ class MainController(QObject):
         if reply == QMessageBox.StandardButton.Yes:
             config = self.settings.get_config()
             try:
-                fb_service = FacebookService(config.get('fb_id'), config.get('fb_token'))
+                fb_service = self.fb_svc_factory(config.get('fb_id'), config.get('fb_token'))
                 if fb_service.delete_post(post_id):
                     self.view.show_notification("Đã Xóa 🗑️", "Bài viết đã bị bốc hơi khỏi Fanpage!")
                     # Tải lại danh sách ngay lập tức để cập nhật UI
@@ -497,7 +526,7 @@ class MainController(QObject):
     def handle_post_now(self, draft_obj, time_str, is_auto):
         """Xử lý nút Đăng Ngay lên FB"""
         config = self.settings.get_config()
-        fb_service = FacebookService(config.get('fb_id'), config.get('fb_token'))
+        fb_service = self.fb_svc_factory(config.get('fb_id'), config.get('fb_token'))
         mode_name = "Auto Bot" if is_auto else "Thủ công"
         
         # Kiểm tra xem có đang chạy từ Queue (Hàng đợi) không.
@@ -647,3 +676,47 @@ class MainController(QObject):
                 
                 # Ra lệnh cho phần mềm tự động chạy Pipeline y như có người bấm nút!
                 self.handle_run_pipeline()
+
+    # ==========================================
+    # TOKEN STATISTICS MANAGEMENT
+    # ==========================================
+    @Slot()
+    def refresh_token_stats(self):
+        """Làm mới tab thống kê token"""
+        if not self.token_history_manager:
+            return
+        
+        # Lấy thống kê tóm tắt
+        summary_data = self.token_history_manager.get_summary_stats()
+        self.view.tab_tokens.refresh_summary(summary_data)
+        
+        # Lấy lịch sử chi tiết
+        history_data = self.token_history_manager.get_history_detailed()
+        self.view.tab_tokens.refresh_detail_table(history_data)
+    
+    @Slot()
+    def export_token_stats(self):
+        """Xuất thống kê token ra file CSV"""
+        filepath, _ = QFileDialog.getSaveFileName(
+            self.view,
+            "Lưu file CSV thống kê token",
+            "token_stats.csv",
+            "CSV Files (*.csv)"
+        )
+        
+        if filepath:
+            if self.token_history_manager.export_to_csv(filepath):
+                self.view.tab_tokens.show_export_success(filepath)
+            else:
+                self.view.show_notification("Lỗi xuất file ❌", "Không thể xuất file CSV", True)
+    
+    @Slot()
+    def clear_token_history(self):
+        """Xóa toàn bộ lịch sử token"""
+        if self.view.tab_tokens.show_clear_confirm():
+            if self.token_history_manager.clear_history():
+                self.view.show_notification("Đã xóa ✓", "Lịch sử token đã được xóa hoàn toàn.")
+                self.refresh_token_stats()
+            else:
+                self.view.show_notification("Lỗi xóa ❌", "Không thể xóa lịch sử token", True)
+    
