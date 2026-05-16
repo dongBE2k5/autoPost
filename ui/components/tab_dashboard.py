@@ -1,5 +1,6 @@
 # ui/components/tab_dashboard.py
 import os
+# pyrefly: ignore [missing-import]
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QTextEdit, QGroupBox, QSpinBox, QRadioButton, 
                              QButtonGroup, QFrame, QCheckBox, QFileDialog, QSizePolicy,
@@ -15,6 +16,26 @@ class TabDashboard(QWidget):
 
     def initUI(self):
         layout = QHBoxLayout(self)
+        self.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                color: #0f172a;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                margin-top: 15px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 5px;
+                left: 10px;
+            }
+            QLineEdit, QSpinBox, QTextEdit {
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 5px;
+            }
+        """)
         
         # ==========================================
         # CỘT TRÁI: TERMINAL SYSTEM LOGS (ĐÃ BỎ NÚT XÓA/LƯU)
@@ -38,16 +59,16 @@ class TabDashboard(QWidget):
         self.console_log.setReadOnly(True)
         self.console_log.setStyleSheet("""
             QTextEdit {
-                background-color: #0f172a;
-                color: #e2e8f0;
+                background-color: #1e1e1e;
+                color: #4af626;
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 13px;
                 padding: 10px;
-                border: 1px solid #1e293b;
+                border: 1px solid #334155;
                 border-radius: 6px;
             }
             QScrollBar:vertical {
-                background: #0f172a;
+                background: #1e1e1e;
                 width: 12px;
             }
             QScrollBar::handle:vertical {
@@ -73,6 +94,8 @@ class TabDashboard(QWidget):
         # 1. Trợ lý AI
         ai_group = QGroupBox("✨ Trợ lý AI Sinh Content")
         ai_layout = QVBoxLayout()
+        ai_layout.setContentsMargins(15, 25, 15, 15)
+        ai_layout.setSpacing(12)
         
         # --- TÀI LIỆU SẢN PHẨM (MULTI-FILE) ---
         doc_group_box = QGroupBox("📂 Tài liệu sản phẩm")
@@ -81,25 +104,29 @@ class TabDashboard(QWidget):
         doc_group_layout.setSpacing(4)
 
         self.list_doc_files = QListWidget()
-        self.list_doc_files.setMaximumHeight(70)
+        self.list_doc_files.setMaximumHeight(80)
         self.list_doc_files.setStyleSheet(
-            "QListWidget { border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #e2e8f0; font-size: 12px; }"
-            "QListWidget::item { padding: 2px 6px; }"
-            "QListWidget::item:selected { background: #334155; }"
+            "QListWidget { border: 1.5px solid #cbd5e1; border-radius: 8px; background-color: #f8fafc; color: #1e293b; font-size: 13px; }"
+            "QListWidget::item { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; }"
+            "QListWidget::item:selected { background-color: #e0f2fe; color: #0369a1; font-weight: bold; }"
         )
         doc_group_layout.addWidget(self.list_doc_files)
 
         doc_btn_row = QHBoxLayout()
-        doc_btn_row.setSpacing(6)
+        doc_btn_row.setSpacing(10)
         self.btn_add_doc = QPushButton("➕ Thêm File")
-        self.btn_add_doc.setFixedWidth(110)
+        self.btn_add_doc.setMinimumWidth(120)
         self.btn_add_doc.clicked.connect(self.browse_doc_file)
+        
         self.btn_remove_doc = QPushButton("❌ Xóa")
-        self.btn_remove_doc.setFixedWidth(80)
+        self.btn_remove_doc.setMinimumWidth(80)
         self.btn_remove_doc.clicked.connect(self.remove_selected_doc)
+        
         self.btn_clear_docs = QPushButton("🗑️ Xóa tất cả")
-        self.btn_clear_docs.setFixedWidth(110)
+        self.btn_clear_docs.setMinimumWidth(120)
+        self.btn_clear_docs.setStyleSheet("background-color: #ffffff; color: #ef4444; font-weight: bold; border: 1.5px solid #fca5a5;")
         self.btn_clear_docs.clicked.connect(self.list_doc_files.clear)
+        
         doc_btn_row.addWidget(self.btn_add_doc)
         doc_btn_row.addWidget(self.btn_remove_doc)
         doc_btn_row.addWidget(self.btn_clear_docs)
@@ -111,6 +138,7 @@ class TabDashboard(QWidget):
         # --- CHECKBOX: SEARCH TREND TIKTOK ---
         self.chk_search_tiktok = QCheckBox("📡 Search Trend TikTok (dùng API TikTok để lấy video trending)")
         self.chk_search_tiktok.setChecked(False)
+        self.chk_search_tiktok.setToolTip("Lưu ý: Tính năng này sẽ cào dữ liệu qua API Apify, có thể tiêu tốn tín dụng.")
         self.chk_search_tiktok.setStyleSheet("font-weight: bold; color: #38bdf8; padding: 4px 0;")
         ai_layout.addWidget(self.chk_search_tiktok)
 
@@ -120,26 +148,35 @@ class TabDashboard(QWidget):
         tiktok_layout.setContentsMargins(0, 0, 0, 0)
         tiktok_layout.setSpacing(6)
 
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel('Số video:'))
+        from PySide6.QtWidgets import QFormLayout
+        tiktok_form = QFormLayout()
+        tiktok_form.setSpacing(10)
+        
+        spin_row = QHBoxLayout()
         self.spin_max_videos = QSpinBox()
         self.spin_max_videos.setRange(1, 50)
         self.spin_max_videos.setValue(1)
-        row1.addWidget(self.spin_max_videos)
-        row1.addWidget(QLabel('📝 Số bài:'))
+        self.spin_max_videos.setMinimumHeight(35)
+        
         self.spin_ai_count = QSpinBox()
         self.spin_ai_count.setRange(1, 20)
         self.spin_ai_count.setValue(1)
-        row1.addWidget(self.spin_ai_count)
-        row1.addStretch()
-        tiktok_layout.addLayout(row1)
+        self.spin_ai_count.setMinimumHeight(35)
+        
+        spin_row.addWidget(QLabel('Số video:'))
+        spin_row.addWidget(self.spin_max_videos)
+        spin_row.addSpacing(20)
+        spin_row.addWidget(QLabel('📝 Số bài:'))
+        spin_row.addWidget(self.spin_ai_count)
+        spin_row.addStretch()
+        tiktok_form.addRow(spin_row)
 
-        row1_5 = QHBoxLayout()
-        row1_5.addWidget(QLabel('Chủ đề / Ngách:'))
         self.input_target_topics = QLineEdit()
         self.input_target_topics.setPlaceholderText("VD: Sức khỏe, Ăn uống, Mẹ bé...")
-        row1_5.addWidget(self.input_target_topics, stretch=1)
-        tiktok_layout.addLayout(row1_5)
+        self.input_target_topics.setMinimumHeight(35)
+        tiktok_form.addRow("Chủ đề / Ngách:", self.input_target_topics)
+        
+        tiktok_layout.addLayout(tiktok_form)
 
         # --- HASHTAGS & SEARCH QUERIES ---
         hs_row = QHBoxLayout()
@@ -167,14 +204,14 @@ class TabDashboard(QWidget):
 
         # Số bài khi không dùng TikTok (ẩn khi tick TikTok)
         self.solo_count_section = QFrame()
-        solo_layout = QHBoxLayout(self.solo_count_section)
+        solo_layout = QFormLayout(self.solo_count_section)
         solo_layout.setContentsMargins(0, 0, 0, 0)
-        solo_layout.addWidget(QLabel('📝 Số bài viết:'))
         self.spin_ai_count_solo = QSpinBox()
         self.spin_ai_count_solo.setRange(1, 20)
         self.spin_ai_count_solo.setValue(1)
-        solo_layout.addWidget(self.spin_ai_count_solo)
-        solo_layout.addStretch()
+        self.spin_ai_count_solo.setMinimumHeight(35)
+        self.spin_ai_count_solo.setMaximumWidth(100)
+        solo_layout.addRow("📝 Số bài viết:", self.spin_ai_count_solo)
         ai_layout.addWidget(self.solo_count_section)
 
         # Toggle: khi tick TikTok → hiện tiktok_section, ẩn solo; ngược lại
@@ -187,39 +224,63 @@ class TabDashboard(QWidget):
         row3 = QVBoxLayout()
         row3.addWidget(QLabel('Yêu cầu thêm (Prompt):'))
         self.input_custom_prompt = QTextEdit()
-        self.input_custom_prompt.setMaximumHeight(60)
+        self.input_custom_prompt.setMaximumHeight(80)
         row3.addWidget(self.input_custom_prompt)
         ai_layout.addLayout(row3)
 
         row4 = QVBoxLayout()
         row4.addWidget(QLabel('Nội dung cấm (Negative):'))
         self.input_ignore_keywords = QTextEdit()
-        self.input_ignore_keywords.setMaximumHeight(60)
+        self.input_ignore_keywords.setMaximumHeight(80)
         row4.addWidget(self.input_ignore_keywords)
         ai_layout.addLayout(row4)
         
-        row_limit = QHBoxLayout()
-        row_limit.addWidget(QLabel('Giới hạn từ:'))
+        row_limit = QFormLayout()
         self.spin_word_limit = QSpinBox()
         self.spin_word_limit.setRange(0, 5000)
         self.spin_word_limit.setSpecialValueText("Không giới hạn")
-        row_limit.addWidget(self.spin_word_limit)
-        row_limit.addStretch()
+        self.spin_word_limit.setMinimumHeight(35)
+        self.spin_word_limit.setMaximumWidth(150)
+        row_limit.addRow("Giới hạn từ:", self.spin_word_limit)
         ai_layout.addLayout(row_limit)
         
-        row_logo = QHBoxLayout()
-        self.check_gen_image = QCheckBox("🎨 Tạo Ảnh (Image)")
+        # --- MEDIA FRAME ---
+        media_frame = QFrame()
+        media_frame.setStyleSheet("QFrame { border: 1.5px dashed #cbd5e1; border-radius: 8px; background-color: #f8fafc; }")
+        media_layout = QVBoxLayout(media_frame)
+        media_layout.setContentsMargins(15, 10, 15, 10)
+        media_layout.setSpacing(10)
+
+        row_image = QHBoxLayout()
+        self.check_gen_image = QCheckBox("🎨 Kèm Ảnh (Image)")
+        self.check_gen_image.setStyleSheet("font-weight: bold; border: none; background: transparent;")
         self.btn_image_settings = QPushButton('⚙️ Cài Ảnh')
+        self.btn_image_settings.setEnabled(False)
         self.btn_logo_settings = QPushButton('🖼️ Cài Logo')
+        self.btn_logo_settings.setEnabled(False)
+        row_image.addWidget(self.check_gen_image)
+        row_image.addWidget(self.btn_image_settings)
+        row_image.addWidget(self.btn_logo_settings)
+        row_image.addStretch()
+
+        row_video = QHBoxLayout()
         self.check_gen_video = QCheckBox("🎬 Tạo Video (Veo 3.1)")
+        self.check_gen_video.setStyleSheet("font-weight: bold; border: none; background: transparent;")
+        self.check_gen_video.setToolTip("Lưu ý: Tạo video bằng model Veo 3.1 sẽ tiêu tốn nhiều Token AI và thời gian xử lý lâu hơn tạo ảnh.")
         self.btn_video_settings = QPushButton('🎥 Cài Video')
-        row_logo.addWidget(self.check_gen_image)
-        row_logo.addWidget(self.btn_image_settings)
-        row_logo.addWidget(self.btn_logo_settings)
-        row_logo.addWidget(self.check_gen_video)
-        row_logo.addWidget(self.btn_video_settings)
-        row_logo.addStretch()
-        ai_layout.addLayout(row_logo)
+        self.btn_video_settings.setEnabled(False)
+        row_video.addWidget(self.check_gen_video)
+        row_video.addWidget(self.btn_video_settings)
+        row_video.addStretch()
+
+        media_layout.addLayout(row_image)
+        media_layout.addLayout(row_video)
+        
+        # Connect Logic UX
+        self.check_gen_image.toggled.connect(lambda checked: [self.btn_image_settings.setEnabled(checked), self.btn_logo_settings.setEnabled(checked)])
+        self.check_gen_video.toggled.connect(self.btn_video_settings.setEnabled)
+        
+        ai_layout.addWidget(media_frame)
 
         
         self.btn_auto_pipeline = QPushButton('⚡ BẮT ĐẦU CÀO & PHÂN TÍCH')
@@ -290,7 +351,7 @@ class TabDashboard(QWidget):
         time_str = datetime.datetime.now().strftime('%H:%M:%S')
         
         # Logic tô màu tự động cho Console
-        color = "#e2e8f0" # Màu xám sáng mặc định
+        color = "#4af626" # Màu xanh terminal mặc định
         if "❌" in msg or "Lỗi" in msg or "Thất bại" in msg:
             color = "#ef4444" # Màu Đỏ
         elif "✅" in msg or "Thành công" in msg:
@@ -429,8 +490,8 @@ class TabDashboard(QWidget):
         """Chuyển đổi trạng thái giao diện khi đang phân tích"""
         if is_analyzing:
             self.btn_auto_pipeline.setText("⏹️ DỪNG PHÂN TÍCH")
-            self.btn_auto_pipeline.setStyleSheet("background-color: #ef4444; color: white; padding: 15px; font-size: 15px; border-radius: 8px; border: none; font-weight: bold;")
+            self.btn_auto_pipeline.setStyleSheet("background-color: #ef4444; color: white; padding: 15px; font-size: 15px; border-radius: 8px; border: none; font-weight: bold; min-height: 50px;")
         else:
             self.btn_auto_pipeline.setText("⚡ BẮT ĐẦU CÀO & PHÂN TÍCH")
-            self.btn_auto_pipeline.setStyleSheet("background-color: #8b5cf6; color: white; padding: 15px; font-size: 15px; border-radius: 8px; border: none; font-weight: bold;")
+            self.btn_auto_pipeline.setStyleSheet("background-color: #8b5cf6; color: white; padding: 15px; font-size: 15px; border-radius: 8px; border: none; font-weight: bold; min-height: 50px;")
         self.btn_auto_pipeline.setEnabled(True)

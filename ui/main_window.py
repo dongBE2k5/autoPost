@@ -1,7 +1,7 @@
 # ui/main_window.py
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QTabWidget, QLabel, 
                              QInputDialog, QLineEdit, QSystemTrayIcon, QStyle)
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QSettings
 
 from config.settings import MODERN_STYLE, ADMIN_PASSWORD
 from ui.dialogs.toast import CustomToast
@@ -29,7 +29,17 @@ class MainWindow(QWidget):
 
     def initUI(self):
         self.setWindowTitle('Facebook Auto-Post Manager PRO (MVC Fully Refactored)')
-        self.resize(1400, 850) 
+        
+        # Set Minimum Size and default Size
+        self.setMinimumSize(1024, 768)
+        self.resize(1440, 900)
+        
+        # Khôi phục trạng thái cửa sổ
+        self.settings = QSettings("AutoPostApp", "AutoPostManager")
+        geometry = self.settings.value("geometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+            
         self.root_layout = QVBoxLayout(self)
         self.tab_widget = QTabWidget()
         
@@ -74,4 +84,6 @@ class MainWindow(QWidget):
         self.tray_icon.show() 
 
     def closeEvent(self, event):
+        # Lưu trạng thái cửa sổ khi đóng
+        self.settings.setValue("geometry", self.saveGeometry())
         event.accept()

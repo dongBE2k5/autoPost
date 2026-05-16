@@ -44,7 +44,8 @@ MODERN_STYLE = (
     "QPushButton:disabled { background-color: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; }\n"
     
     "QTableWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; gridline-color: #f1f5f9; selection-background-color: #eff6ff; selection-color: #1e40af; }\n"
-    "QHeaderView::section { background-color: #f8fafc; padding: 10px; border: none; border-bottom: 1.5px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-weight: 800; color: #334155; font-size: 13px; }\n"
+    "QHeaderView::section:horizontal { background-color: #f8fafc; padding: 10px; border: none; border-bottom: 1.5px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-weight: 800; color: #334155; font-size: 13px; }\n"
+    "QHeaderView::section:vertical { background-color: #f8fafc; padding: 2px 10px; border: none; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-weight: 800; color: #334155; font-size: 13px; }\n"
     
     "QRadioButton { font-weight: bold; color: #334155; padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; background-color: #f8fafc; }\n"
     "QRadioButton:hover { border-color: #cbd5e1; background-color: #f1f5f9; }\n"

@@ -78,7 +78,7 @@ class SettingsManager:
         default_sys_prompt = "Bạn là một Copywriter chuyên nghiệp. Nhiệm vụ duy nhất của bạn là viết bài đăng Facebook.\nTUYỆT ĐỐI KHÔNG lặp lại yêu cầu của tôi. KHÔNG giải thích. CHỈ TRẢ VỀ NỘI DUNG CÁC BÀI VIẾT."
         
         # Cung cấp giá trị mặc định nếu chưa có trong DB
-        return {
+        config_data = {
             "publish_immediately": settings_dict.get("publish_immediately", "1") == "1",
             "system_prompt": settings_dict.get("system_prompt", default_sys_prompt),
             "gemini_key": settings_dict.get("gemini_key", ""),
@@ -98,11 +98,9 @@ class SettingsManager:
             "veo_res": settings_dict.get("veo_res", "720p"),
             "veo_duration": settings_dict.get("veo_duration", "8"),
             "veo_negative": settings_dict.get("veo_negative", ""),
-            # --- 3 DÒNG MỚI THÊM VÀO ---
             "veo_style": settings_dict.get("veo_style", "Mặc định"),
             "veo_camera": settings_dict.get("veo_camera", "Mặc định"),
             "veo_ref_image": settings_dict.get("veo_ref_image", ""),
-            
             "dash_keyword": settings_dict.get("dash_keyword", ""),
             "dash_max_videos": int(settings_dict.get("dash_max_videos", "1")),
             "dash_ai_count": int(settings_dict.get("dash_ai_count", "1")),
@@ -120,9 +118,17 @@ class SettingsManager:
             "dash_imagen_lighting": settings_dict.get("dash_imagen_lighting", ""),
             "dash_imagen_camera": settings_dict.get("dash_imagen_camera", ""),
             "dash_imagen_context": settings_dict.get("dash_imagen_context", "")
-
-
         }
+        
+        # Xử lý dash_imagen_paths (do được lưu bằng str(list))
+        import ast
+        try:
+            raw_paths = settings_dict.get("dash_imagen_paths", "[]")
+            config_data["dash_imagen_paths"] = ast.literal_eval(raw_paths) if raw_paths else []
+        except:
+            config_data["dash_imagen_paths"] = []
+            
+        return config_data
 
     def save_config(self, config_dict):
         """Lưu lại các cấu hình hệ thống từ Dictionary"""

@@ -215,14 +215,13 @@ class LogoSettingsDialog(QDialog):
 
 
 class ImageSettingsDialog(QDialog):
-    def __init__(self, aspect="1:1", style="Mặc định", subject="", action="", lighting="", camera="", context="", parent=None, image_ids=None):
+    def __init__(self, aspect="1:1", style="Mặc định", subject="", action="", lighting="", camera="", context="", parent=None, image_paths=None):
         super().__init__(parent)
         self.setWindowTitle("🎨 Cài đặt Tạo Hình Ảnh AI (Imagen 3)")
         self.resize(600, 600)
         self.setStyleSheet(MODERN_STYLE)
         
-        self.selected_image_ids = image_ids or []  # Lưu list image_ids
-        self.image_service = None  # Sẽ được gắn từ Controller nếu cần
+        self.selected_image_paths = image_paths or []  # Lưu list file paths
 
         layout = QVBoxLayout(self)
 
@@ -252,8 +251,10 @@ class ImageSettingsDialog(QDialog):
 
         # 2. Chi tiết nâng cao (Manual Prompting)
         adv_group = QGroupBox("🎭 Chi tiết nội dung (Tùy chọn)")
-        adv_layout = QVBoxLayout()
-
+        from PySide6.QtWidgets import QFormLayout
+        adv_layout = QFormLayout()
+        adv_layout.setSpacing(10)
+        
         # --- Chủ thể ---
         row_subject = QHBoxLayout()
         self.combo_subject = QComboBox()
@@ -276,10 +277,9 @@ class ImageSettingsDialog(QDialog):
             if self.combo_subject.currentText() != subject:  # Không tìm thấy
                 self.combo_subject.setCurrentText("Khác")
                 self.subject_custom.setVisible(True)
-        row_subject.addWidget(QLabel("Chủ thể:"))
         row_subject.addWidget(self.combo_subject, stretch=1)
         row_subject.addWidget(self.subject_custom, stretch=1)
-        adv_layout.addLayout(row_subject)
+        adv_layout.addRow("Chủ thể:", row_subject)
 
         # --- Hành động ---
         row_action = QHBoxLayout()
@@ -301,10 +301,9 @@ class ImageSettingsDialog(QDialog):
             if self.combo_action.currentText() != action:  # Không tìm thấy
                 self.combo_action.setCurrentText("Khác")
                 self.action_custom.setVisible(True)
-        row_action.addWidget(QLabel("Hành động:"))
         row_action.addWidget(self.combo_action, stretch=1)
         row_action.addWidget(self.action_custom, stretch=1)
-        adv_layout.addLayout(row_action)
+        adv_layout.addRow("Hành động:", row_action)
 
         # --- Ánh sáng/Màu ---
         row_lighting = QHBoxLayout()
@@ -324,10 +323,9 @@ class ImageSettingsDialog(QDialog):
             if self.combo_lighting.currentText() != lighting:  # Không tìm thấy
                 self.combo_lighting.setCurrentText("Khác")
                 self.lighting_custom.setVisible(True)
-        row_lighting.addWidget(QLabel("Ánh sáng/Màu:"))
         row_lighting.addWidget(self.combo_lighting, stretch=1)
         row_lighting.addWidget(self.lighting_custom, stretch=1)
-        adv_layout.addLayout(row_lighting)
+        adv_layout.addRow("Ánh sáng/Màu:", row_lighting)
 
         # --- Góc máy ---
         row_camera = QHBoxLayout()
@@ -347,10 +345,9 @@ class ImageSettingsDialog(QDialog):
             if self.combo_camera.currentText() != camera:  # Không tìm thấy
                 self.combo_camera.setCurrentText("Khác")
                 self.camera_custom.setVisible(True)
-        row_camera.addWidget(QLabel("Góc máy:"))
         row_camera.addWidget(self.combo_camera, stretch=1)
         row_camera.addWidget(self.camera_custom, stretch=1)
-        adv_layout.addLayout(row_camera)
+        adv_layout.addRow("Góc máy:", row_camera)
 
         # --- Bối cảnh ---
         row_context = QHBoxLayout()
@@ -370,10 +367,9 @@ class ImageSettingsDialog(QDialog):
             if self.combo_context.currentText() != context:  # Không tìm thấy
                 self.combo_context.setCurrentText("Khác")
                 self.context_custom.setVisible(True)
-        row_context.addWidget(QLabel("Bối cảnh:"))
         row_context.addWidget(self.combo_context, stretch=1)
         row_context.addWidget(self.context_custom, stretch=1)
-        adv_layout.addLayout(row_context)
+        adv_layout.addRow("Bối cảnh:", row_context)
 
         adv_group.setLayout(adv_layout)
         layout.addWidget(adv_group)
@@ -386,28 +382,113 @@ class ImageSettingsDialog(QDialog):
         # 4. Chọn ảnh từ thư viện người dùng
         user_image_group = QGroupBox("📸 Sử dụng Ảnh Người Dùng (Hỗ trợ nhiều ảnh)")
         user_image_layout = QVBoxLayout()
-        btn_select_user_image = QPushButton("📸 Chọn ảnh từ thư viện")
-        btn_select_user_image.setStyleSheet("background-color: #06b6d4; color: white; font-weight: bold; padding: 10px 15px;")
+        user_image_layout.setSpacing(12)
+        
+        btn_row = QHBoxLayout()
+        btn_select_user_image = QPushButton("📸 Thêm ảnh từ máy")
+        btn_select_user_image.setMinimumHeight(40)
+        btn_select_user_image.setStyleSheet("background-color: #06b6d4; color: white; font-weight: bold; font-size: 14px; border-radius: 8px; padding: 5px 15px;")
         btn_select_user_image.clicked.connect(self._on_select_user_image)
-        self.lbl_selected_image = QLabel(self._format_selected_images())
-        self.lbl_selected_image.setStyleSheet("color: #64748b; font-style: italic;")
-        user_image_layout.addWidget(btn_select_user_image)
-        user_image_layout.addWidget(self.lbl_selected_image)
+        
+        btn_remove_selected = QPushButton("❌ Xóa ảnh đang chọn")
+        btn_remove_selected.setMinimumHeight(40)
+        btn_remove_selected.setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold; font-size: 14px; border-radius: 8px; padding: 5px 15px;")
+        btn_remove_selected.clicked.connect(self._on_remove_selected_image)
+
+        btn_clear_user_image = QPushButton("🗑️ Xóa tất cả")
+        btn_clear_user_image.setMinimumHeight(40)
+        btn_clear_user_image.setStyleSheet("background-color: #ef4444; color: white; font-weight: bold; font-size: 14px; border-radius: 8px; padding: 5px 15px;")
+        btn_clear_user_image.clicked.connect(self._on_clear_user_image)
+        
+        btn_row.addWidget(btn_select_user_image, stretch=2)
+        btn_row.addWidget(btn_remove_selected, stretch=1)
+        btn_row.addWidget(btn_clear_user_image, stretch=1)
+        
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem, QListView, QAbstractItemView
+        from PySide6.QtGui import QIcon, QPixmap
+        from PySide6.QtCore import QSize
+        
+        self.list_selected_images = QListWidget()
+        self.list_selected_images.setViewMode(QListView.ViewMode.IconMode)
+        self.list_selected_images.setIconSize(QSize(160, 160))
+        self.list_selected_images.setResizeMode(QListView.ResizeMode.Adjust)
+        self.list_selected_images.setSpacing(15)
+        self.list_selected_images.setMaximumHeight(220)
+        self.list_selected_images.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.list_selected_images.setStyleSheet("background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; color: #1e293b;")
+        
+        user_image_layout.addLayout(btn_row)
+        user_image_layout.addWidget(self.list_selected_images)
         user_image_group.setLayout(user_image_layout)
         layout.addWidget(user_image_group)
 
         # NÚT ĐIỀU KHIỂN
         btn_layout = QHBoxLayout()
         btn_cancel = QPushButton("Hủy bỏ")
+        btn_cancel.setMinimumHeight(45)
+        btn_cancel.setMinimumWidth(100)
+        btn_cancel.setStyleSheet("background-color: #f1f5f9; color: #475569; font-weight: bold; font-size: 14px; border: 1.5px solid #cbd5e1; border-radius: 8px;")
         btn_cancel.clicked.connect(self.reject)
-        btn_save = QPushButton("💾 Lưu Cài Đặt Ảnh")
-        btn_save.setStyleSheet("background-color: #22c55e; color: white; font-weight: bold; padding: 8px 15px;")
+        
+        btn_save = QPushButton("💾 LƯU CÀI ĐẶT ẢNH")
+        btn_save.setMinimumHeight(45)
+        btn_save.setMinimumWidth(180)
+        btn_save.setStyleSheet("background-color: #22c55e; color: white; font-weight: bold; font-size: 14px; border-radius: 8px;")
         btn_save.clicked.connect(self.accept)
+        
         btn_layout.addStretch()
         btn_layout.addWidget(btn_cancel)
         btn_layout.addWidget(btn_save)
         
         layout.addLayout(btn_layout)
+        
+        # Gọi cập nhật giao diện ban đầu
+        self._update_image_list()
+
+    def _on_remove_selected_image(self):
+        """Xóa các ảnh đang được người dùng chọn trong danh sách"""
+        selected_items = self.list_selected_images.selectedItems()
+        if not selected_items:
+            return
+        
+        # Lấy tooltip (lưu đường dẫn) của các item đang chọn
+        paths_to_remove = [item.toolTip() for item in selected_items]
+        
+        # Cập nhật lại danh sách paths
+        self.selected_image_paths = [p for p in self.selected_image_paths if p not in paths_to_remove]
+        self._update_image_list()
+
+    def _on_clear_user_image(self):
+        """Xóa toàn bộ danh sách ảnh đã chọn"""
+        self.selected_image_paths = []
+        self._update_image_list()
+
+    def _update_image_list(self):
+        """Cập nhật giao diện danh sách ảnh được chọn"""
+        from PySide6.QtWidgets import QListWidgetItem
+        from PySide6.QtGui import QIcon, QPixmap
+        from PySide6.QtCore import Qt
+        import os
+        
+        self.list_selected_images.clear()
+        
+        if not self.selected_image_paths:
+            item = QListWidgetItem("Chưa chọn ảnh")
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.list_selected_images.addItem(item)
+            return
+            
+        for path in self.selected_image_paths:
+            if os.path.exists(path):
+                pixmap = QPixmap(path)
+                icon = QIcon(pixmap)
+                filename = os.path.basename(path)
+                # Giới hạn độ dài tên file
+                if len(filename) > 15:
+                    filename = filename[:12] + "..."
+                item = QListWidgetItem(icon, filename)
+                item.setToolTip(path)
+                self.list_selected_images.addItem(item)
 
     def _on_subject_changed(self):
         """Hiển thị ô tùy chỉnh khi chọn 'Khác'"""
@@ -470,43 +551,20 @@ class ImageSettingsDialog(QDialog):
             lighting,
             camera,
             context,
-            self.selected_image_ids  # Trả về list của image_ids
+            self.selected_image_paths  # Trả về list của image paths
         )
     
-    def _format_selected_images(self):
-        """Format display of selected images"""
-        if not self.selected_image_ids:
-            return "Chưa chọn ảnh"
-        
-        if len(self.selected_image_ids) == 1:
-            try:
-                image = self.image_service.get_image_by_id(self.selected_image_ids[0])
-                if image:
-                    return f"✅ Đã chọn: {image.file_name}"
-            except:
-                pass
-            return f"✅ Đã chọn: 1 ảnh"
-        
-        return f"✅ Đã chọn: {len(self.selected_image_ids)} ảnh"
-    
     def _on_select_user_image(self):
-        """Mở dialog chọn ảnh từ thư viện (hỗ trợ chọn nhiều ảnh)"""
-        if not self.image_service:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Lỗi", "Thư viện ảnh chưa được khởi tạo!")
-            return
-        
-        from ui.dialogs.user_image_selector import UserImageSelectorDialog
-        dialog = UserImageSelectorDialog(self.image_service, multi_select=True, parent=self)
-        
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            image_ids = dialog.get_selected_images()
-            if image_ids:
-                self.selected_image_ids = image_ids
-                self.lbl_selected_image.setText(self._format_selected_images())
-                self.lbl_selected_image.setStyleSheet("color: #16a34a; font-weight: bold;")
-    
-    def set_image_service(self, service):
-        """Gắn ImageLibraryService"""
-        self.image_service = service
+        """Mở dialog chọn ảnh từ máy tính (hỗ trợ chọn nhiều ảnh)"""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, 
+            "Chọn Ảnh", 
+            "", 
+            "Images (*.png *.jpg *.jpeg *.webp)"
+        )
+        if file_paths:
+            for path in file_paths:
+                if path not in self.selected_image_paths:
+                    self.selected_image_paths.append(path)
+            self._update_image_list()
 

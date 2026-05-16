@@ -11,8 +11,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # Chỉ tập trung build Windows bản xịn nhất
-        os: [windows-latest, macos-13]
+        # Build Windows bản xịn nhất và macOS cả 2 kiến trúc (Intel & Apple Silicon)
+        os: [windows-latest, macos-13, macos-14]
 
     steps:
     - name: Checkout code
@@ -81,7 +81,7 @@ jobs:
         path: Output/Komeify_Setup_v1.0.exe
 
     - name: Create DMG File (Tạo bộ cài đặt macOS)
-      if: matrix.os == 'macos-13'
+      if: startsWith(matrix.os, 'macos')
       run: |
         echo "Đang cấu hình Info.plist để yêu cầu macOS tối thiểu là 13.0..."
         /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" Komeify.app/Contents/Info.plist || /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 13.0" Komeify.app/Contents/Info.plist
@@ -89,11 +89,22 @@ jobs:
         echo "Đang đóng gói Komeify.app thành file .dmg..."
         mkdir -p Output
 
-        hdiutil create -volname "Komeify" -srcfolder "Komeify.app" -ov -format UDZO "Output/Komeify_macOS.dmg"
+        # Đặt tên file theo kiến trúc CPU để không bị trùng
+        if [ "$RUNNER_ARCH" == "ARM64" ]; then
+          SUFFIX="AppleSilicon"
+        else
+          SUFFIX="Intel"
+        fi
+
+        hdiutil create -volname "Komeify" -srcfolder "Komeify.app" -ov -format UDZO "Output/Komeify_macOS_${SUFFIX}.dmg"
+        
+        # Lưu biến môi trường để bước Upload có thể dùng
+        echo "DMG_NAME=Komeify_macOS_${SUFFIX}.dmg" >> $GITHUB_ENV
+        echo "ARTIFACT_NAME=Komeify-macOS-${SUFFIX}-DMG" >> $GITHUB_ENV
         
     - name: Upload macOS Artifact
-      if: matrix.os == 'macos-13'
+      if: startsWith(matrix.os, 'macos')
       uses: actions/upload-artifact@v4
       with:
-        name: Komeify-macOS-DMG
-        path: Output/Komeify_macOS.dmg
+        name: ${{ env.ARTIFACT_NAME }}
+        path: Output/${{ env.DMG_NAME }}

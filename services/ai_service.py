@@ -437,6 +437,8 @@ class AIService:
 
         final_posts = []
         media_fail_count = 0  
+        
+        user_images = config.get("dash_imagen_paths", [])
 
         for idx, content in enumerate(posts):
             if stop_cb and stop_cb(): break
@@ -445,11 +447,33 @@ class AIService:
             media_prompt = "" 
             
             if config.get("gen_image"):
-                img_result = yield from self._generate_image_for_post(content, idx, config)
-                image_path = img_result.get("path", "")
-                media_prompt = img_result.get("prompt", "")
-                if not image_path:
-                    media_fail_count += 1
+                if user_images:
+                    yield {"type": "log", "message": f"🖼️ Dùng ảnh người dùng cung cấp cho bài {idx+1}..."}
+                    import shutil
+                    user_image_idx = idx % len(user_images)
+                    source_image = user_images[user_image_idx]
+                    
+                    img_dir = os.path.join(data_dir, "image")
+                    os.makedirs(img_dir, exist_ok=True)
+                    ext = os.path.splitext(source_image)[1] or '.png'
+                    new_image_path = os.path.join(img_dir, f"img_{int(time.time())}_{idx}{ext}")
+                    
+                    try:
+                        shutil.copy2(source_image, new_image_path)
+                        if self._apply_image_overlays(new_image_path, config):
+                            yield {"type": "log", "message": f"✅ Dùng ảnh người dùng & đóng dấu bài {idx+1} thành công!"}
+                        else:
+                            yield {"type": "log", "message": f"✅ Dùng ảnh người dùng bài {idx+1} thành công (Lỗi khi chèn logo)."}
+                        image_path = new_image_path
+                    except Exception as e:
+                        yield {"type": "log", "message": f"⚠️ Lỗi copy ảnh người dùng bài {idx+1}: {e}"}
+                        media_fail_count += 1
+                else:
+                    img_result = yield from self._generate_image_for_post(content, idx, config)
+                    image_path = img_result.get("path", "")
+                    media_prompt = img_result.get("prompt", "")
+                    if not image_path:
+                        media_fail_count += 1
             
             if config.get("gen_video"):
                 vid_path = yield from self._generate_video_for_post(content, product_info, idx, config)

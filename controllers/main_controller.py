@@ -241,12 +241,13 @@ class MainController(QObject):
                 cfg.get('dash_imagen_lighting', ''),
                 cfg.get('dash_imagen_camera', ''),
                 cfg.get('dash_imagen_context', ''),
-                self.view
+                self.view,
+                cfg.get('dash_imagen_paths', [])
             )
             
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 try:
-                    aspect, style, subject, action, lighting, camera, context = dialog.get_settings()
+                    aspect, style, subject, action, lighting, camera, context, image_paths = dialog.get_settings()
                     cfg.update({
                         'dash_imagen_aspect': aspect, 
                         'dash_imagen_style': style,
@@ -254,7 +255,8 @@ class MainController(QObject):
                         'dash_imagen_action': action,
                         'dash_imagen_lighting': lighting,
                         'dash_imagen_camera': camera,
-                        'dash_imagen_context': context
+                        'dash_imagen_context': context,
+                        'dash_imagen_paths': image_paths
                     })
                     self.settings.save_config(cfg)
                     self.view.show_notification("Thành công 🎨", "Đã lưu cài đặt Hình Ảnh AI nâng cao.")
@@ -299,27 +301,36 @@ class MainController(QObject):
     @Slot()
     def open_drafts_dialog(self):
         drafts_list_dicts = [d.to_dict() for d in self.settings.get_drafts()]
-        dialog = DraftsDialog(drafts_list_dicts, self.view)
         
-        # Bắt tín hiệu từ Dialog gửi về Controller
-        dialog.post_now_requested.connect(
-            lambda d: self.handle_post_now(
-                ContentDraft(
-                    keyword=d.get('keyword', ''),
-                    content=d.get('content', ''),
-                    image_path=d.get('image_path', ''),
-                    video_path=d.get('video_path', '')
-                ), 
-                "00:00", 
-                False
+        if not hasattr(self, 'drafts_dialog'):
+            self.drafts_dialog = DraftsDialog([], self.view)
+            
+            # Bắt tín hiệu từ Dialog gửi về Controller
+            self.drafts_dialog.post_now_requested.connect(
+                lambda d: self.handle_post_now(
+                    ContentDraft(
+                        keyword=d.get('keyword', ''),
+                        content=d.get('content', ''),
+                        image_path=d.get('image_path', ''),
+                        video_path=d.get('video_path', '')
+                    ), 
+                    "00:00", 
+                    False
+                )
             )
-        )
-        
-        # Lấy queue list hiện tại
-        queue_list_dicts = [q.to_dict() for q in self.settings.get_queue()]
-        dialog.queue_requested.connect(lambda d, t: queue_list_dicts.append({"time": t, **d}))
-        
-        dialog.exec()
+            
+            def _on_queue_requested(d, t):
+                queue_list_dicts = [q.to_dict() for q in self.settings.get_queue()]
+                queue_list_dicts.append({"time": t, **d})
+                def dict_to_queue_obj(q):
+                    return ContentDraft(time_queue=q.get('time',''), keyword=q.get('keyword',''), 
+                                        content=q.get('content',''), image_path=q.get('image_path',''), video_path=q.get('video_path',''))
+                self.settings.save_queue([dict_to_queue_obj(q) for q in queue_list_dicts])
+                
+            self.drafts_dialog.queue_requested.connect(_on_queue_requested)
+            
+        self.drafts_dialog.update_data(drafts_list_dicts)
+        self.drafts_dialog.exec()
         
         # Lưu lại DB sau khi đóng cửa sổ
         updated_drafts = [
@@ -329,25 +340,24 @@ class MainController(QObject):
                 timestamp=d.get('timestamp', ''),
                 image_path=d.get('image_path', ''), 
                 video_path=d.get('video_path', '')
-            ) for d in dialog.drafts_list
+            ) for d in self.drafts_dialog.drafts_list
         ]
         self.settings.save_drafts(updated_drafts)
-        
-        def dict_to_queue_obj(q):
-            return ContentDraft(time_queue=q.get('time',''), keyword=q.get('keyword',''), 
-                                content=q.get('content',''), image_path=q.get('image_path',''), video_path=q.get('video_path',''))
-        self.settings.save_queue([dict_to_queue_obj(q) for q in queue_list_dicts])
 
     @Slot()
     def open_queue_dialog(self):
         queue_list_dicts = [q.to_dict() for q in self.settings.get_queue()]
-        dialog = QueueDialog(queue_list_dicts, self.view)
-        dialog.exec()
+        
+        if not hasattr(self, 'queue_dialog'):
+            self.queue_dialog = QueueDialog([], self.view)
+            
+        self.queue_dialog.update_data(queue_list_dicts)
+        self.queue_dialog.exec()
         
         def dict_to_queue_obj(q):
             return ContentDraft(time_queue=q.get('time',''), keyword=q.get('keyword',''), 
                                 content=q.get('content',''), image_path=q.get('image_path',''), video_path=q.get('video_path',''))
-        self.settings.save_queue([dict_to_queue_obj(q) for q in dialog.queue_list])
+        self.settings.save_queue([dict_to_queue_obj(q) for q in self.queue_dialog.queue_list])
 
     # ==========================================
     # CÁC HÀM XỬ LÝ NGHIỆP VỤ CHÍNH

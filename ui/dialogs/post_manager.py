@@ -4,11 +4,13 @@ import sys
 import subprocess
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QTextEdit, QGroupBox, QMessageBox, QTimeEdit, 
-                             QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QAbstractItemView, QSpinBox)
-from PySide6.QtCore import QTime, Qt, Signal
+                             QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, QAbstractItemView, QSpinBox, QCheckBox)
+from PySide6.QtCore import QTime, Qt, Signal, QTimer
 from PySide6.QtGui import QFont, QColor, QPixmap
 from config.settings import MODERN_STYLE
 from ui.dialogs.schedule_settings import EditTimeDialog
+from ui.dialogs.user_image_selector import UserImageSelectorDialog
+from services.image_library_service import ImageLibraryService
 
 class DraftDetailDialog(QDialog):
     def __init__(self, draft_data, parent=None):
@@ -23,99 +25,124 @@ class DraftDetailDialog(QDialog):
         main_layout = QHBoxLayout()
         self.setLayout(main_layout)
 
+        # ----------------------------------------------------
+        # --- CỘT TRÁI (MEDIA FRAME)
+        # ----------------------------------------------------
+        media_frame = QFrame()
+        media_frame.setObjectName("MediaFrame")
+        media_frame.setStyleSheet("QFrame#MediaFrame { background-color: #f8fafc; border-right: 1.5px solid #cbd5e1; border-radius: 0px; }")
+        media_layout = QVBoxLayout(media_frame)
+        media_layout.setContentsMargins(15, 20, 15, 20)
+        
+        media_layout.addWidget(QLabel('<b>📸 Media đính kèm:</b>'))
+        
+        # Thumbnail Label
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setMinimumSize(350, 350)
+        self.image_label.setStyleSheet("background-color: #e2e8f0; border: 1.5px dashed #94a3b8; border-radius: 8px;")
+        
         vid_path = self.draft_data.get("video_path", "")
         img_path = self.draft_data.get("image_path", "")
         
         if vid_path and os.path.exists(vid_path):
-            media_frame = QFrame()
-            media_frame.setObjectName("MediaFrame") 
-            media_layout = QVBoxLayout(media_frame)
-            media_layout.setContentsMargins(20, 20, 20, 20)
-            media_layout.addWidget(QLabel('<b>🎬 Video minh họa (Veo 3.1):</b>'))
+            self.image_label.setText("🎬 Video minh họa\\n(Không hỗ trợ xem trước)")
+            self.image_label.setStyleSheet("background-color: #fef2f2; border: 1.5px dashed #fca5a5; border-radius: 8px; color: #ef4444; font-weight: bold; font-size: 14px;")
+            media_layout.addWidget(self.image_label, stretch=1)
             
-            lbl_vid = QLabel("Phát hiện Video đính kèm.\n(Không thể xem trước trực tiếp trong app)")
-            lbl_vid.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl_vid.setStyleSheet("color: #94a3b8; font-size: 16px; font-style: italic;")
-            media_layout.addWidget(lbl_vid, stretch=1)
-            
-            btn_play = QPushButton("▶️ MỞ VIDEO BẰNG PHẦN MỀM MÁY TÍNH")
-            btn_play.setStyleSheet("background-color: #ef4444; color: white; padding: 15px; font-weight: bold;")
+            btn_play = QPushButton("▶️ MỞ VIDEO")
+            btn_play.setStyleSheet("background-color: #ef4444; color: white; padding: 8px; font-weight: bold; border-radius: 6px;")
             btn_play.clicked.connect(lambda: os.startfile(vid_path) if sys.platform == "win32" else subprocess.call(["open" if sys.platform == "darwin" else "xdg-open", vid_path]))
             media_layout.addWidget(btn_play)
-            
-            main_layout.addWidget(media_frame, stretch=4)
-            
-        elif img_path and os.path.exists(img_path):
-            media_frame = QFrame()
-            media_frame.setObjectName("MediaFrame") 
-            media_layout = QVBoxLayout(media_frame)
-            media_layout.setContentsMargins(10, 10, 10, 10)
-            
-            media_layout.addWidget(QLabel('<b>🖼️ Hình ảnh minh họa:</b>'))
-            self.image_label = QLabel()
-            self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.image_label.setMinimumSize(450, 450)
-            pixmap = QPixmap(img_path)
-            if not pixmap.isNull():
-                self.image_label.setPixmap(pixmap.scaled(450, 450, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            if img_path and os.path.exists(img_path):
+                self.update_thumbnail(img_path)
             else:
-                self.image_label.setText("⚠️ Không thể tải hình ảnh.")
+                self.image_label.setText("🖼️ Chưa có Media")
+                self.image_label.setStyleSheet("background-color: #f1f5f9; border: 1.5px dashed #cbd5e1; border-radius: 8px; color: #94a3b8; font-weight: bold; font-size: 16px;")
             media_layout.addWidget(self.image_label, stretch=1)
-            main_layout.addWidget(media_frame, stretch=4) 
+            
+            # Button change image (Only if it's not a video)
+            self.btn_change_image = QPushButton('📁 Thêm / Thay ảnh')
+            self.btn_change_image.setStyleSheet("background-color: #ffffff; color: #3b82f6; font-weight: bold; border: 1.5px solid #3b82f6; border-radius: 6px; padding: 8px;")
+            self.btn_change_image.clicked.connect(self.choose_image)
+            media_layout.addWidget(self.btn_change_image)
+            
+        main_layout.addWidget(media_frame, stretch=3)
 
+        # ----------------------------------------------------
+        # --- CỘT PHẢI (EDITOR)
+        # ----------------------------------------------------
         editor_layout = QVBoxLayout()
+        editor_layout.setContentsMargins(10, 15, 10, 10)
+        
+        # Info Layout
         info_layout = QHBoxLayout()
+        
         info_layout.addWidget(QLabel('<b>🕒 Thời gian:</b>'))
         time_edit = QLineEdit(self.draft_data.get("timestamp", "Không xác định"))
         time_edit.setReadOnly(True)
-        time_edit.setStyleSheet("background-color: #f1f5f9; color: #64748b;")
-        info_layout.addWidget(time_edit)
+        time_edit.setStyleSheet("background-color: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 6px 10px;")
+        info_layout.addWidget(time_edit, stretch=1)
+
+        info_layout.addSpacing(15)
 
         info_layout.addWidget(QLabel('<b>📌 Nguồn/Trend:</b>'))
         self.kw_edit = QLineEdit(self.draft_data.get("keyword", ""))
-        info_layout.addWidget(self.kw_edit)
+        info_layout.addWidget(self.kw_edit, stretch=3)
+        
         editor_layout.addLayout(info_layout)
 
+        editor_layout.addSpacing(10)
         editor_layout.addWidget(QLabel('<b>📝 Nội dung bài viết (Có thể chỉnh sửa trực tiếp):</b>'))
+        
         self.content_edit = QTextEdit()
         self.content_edit.setPlainText(self.draft_data.get("content", ""))
-        self.content_edit.setStyleSheet("font-size: 15px; line-height: 1.6;")
+        self.content_edit.setStyleSheet("font-size: 15px; padding: 12px; background-color: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 8px;")
         editor_layout.addWidget(self.content_edit)
 
-        self.image_info_label = QLabel()
-        self.update_image_info_label()
-        self.btn_change_image = QPushButton('📁 Thêm / Thay ảnh minh họa')
-        self.btn_change_image.setStyleSheet("background-color: #38bdf8; color: white; min-height: 38px;")
-        self.btn_change_image.clicked.connect(self.choose_image)
-        editor_layout.addWidget(self.image_info_label)
-        editor_layout.addWidget(self.btn_change_image)
+        editor_layout.addSpacing(10)
 
+        # Button Layout (Bottom Right)
         btn_layout = QHBoxLayout()
-        self.btn_save = QPushButton('💾 Lưu lại thay đổi')
-        self.btn_save.setStyleSheet("background-color: #22c55e; color: white; min-height: 40px;")
-        self.btn_save.clicked.connect(self.save_changes) 
+        btn_layout.addStretch(1) # Đẩy các nút sang phải
         
         self.btn_cancel = QPushButton('Đóng (Không lưu)')
-        self.btn_cancel.setStyleSheet("background-color: #e2e8f0; color: #334155; min-height: 40px;")
+        self.btn_cancel.setMinimumWidth(120)
+        self.btn_cancel.setStyleSheet("""
+            QPushButton { background-color: #ffffff; color: #334155; border: 1.5px solid #cbd5e1; font-weight: bold; border-radius: 6px; padding: 8px 15px; }
+            QPushButton:hover { background-color: #f1f5f9; border-color: #94a3b8; }
+        """)
         self.btn_cancel.clicked.connect(self.reject) 
         
+        self.btn_save = QPushButton('💾 Lưu lại thay đổi')
+        self.btn_save.setMinimumWidth(140)
+        self.btn_save.setStyleSheet("""
+            QPushButton { background-color: #22c55e; color: white; font-weight: bold; border-radius: 6px; padding: 8px 15px; border: none; }
+            QPushButton:hover { background-color: #16a34a; }
+        """)
+        self.btn_save.clicked.connect(self.save_changes) 
+        
         btn_layout.addWidget(self.btn_cancel)
-        btn_layout.addWidget(self.btn_save, stretch=1)
+        btn_layout.addSpacing(10)
+        btn_layout.addWidget(self.btn_save)
+        
         editor_layout.addLayout(btn_layout)
         
-        main_layout.addLayout(editor_layout, stretch=6)
+        main_layout.addLayout(editor_layout, stretch=5)
+
+    def update_thumbnail(self, path):
+        pixmap = QPixmap(path)
+        if not pixmap.isNull():
+            self.image_label.setStyleSheet("border: 1px solid #cbd5e1; border-radius: 8px; background-color: transparent;")
+            self.image_label.setPixmap(pixmap.scaled(350, 350, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            self.image_label.setText("⚠️ Lỗi hiển thị ảnh")
 
     def save_changes(self):
         self.draft_data["keyword"] = self.kw_edit.text().strip()
         self.draft_data["content"] = self.content_edit.toPlainText().strip()
         self.accept()
-
-    def update_image_info_label(self):
-        img_path = self.draft_data.get("image_path", "")
-        if img_path and os.path.exists(img_path):
-            self.image_info_label.setText(f"<b>Ảnh minh họa hiện tại:</b> {img_path}")
-        else:
-            self.image_info_label.setText("<b>Ảnh minh họa hiện tại:</b> Chưa có ảnh. Bạn có thể thêm ảnh để đăng kèm.")
 
     def choose_image(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -126,13 +153,7 @@ class DraftDetailDialog(QDialog):
         )
         if path:
             self.draft_data["image_path"] = path
-            self.update_image_info_label()
-            if hasattr(self, 'image_label') and os.path.exists(path):
-                pixmap = QPixmap(path)
-                if not pixmap.isNull():
-                    self.image_label.setPixmap(pixmap.scaled(450, 450, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                else:
-                    self.image_label.setText("⚠️ Không thể tải hình ảnh.")
+            self.update_thumbnail(path)
 
 
 class DraftsDialog(QDialog):
@@ -145,83 +166,118 @@ class DraftsDialog(QDialog):
         self.setWindowTitle("📁 Kho Content đã tạo (Chờ xếp lịch)")
         self.resize(1100, 700) 
         self.setStyleSheet(MODERN_STYLE)
-        self.is_all_checked = False
         self.initUI()
 
     def initUI(self):
         layout = QVBoxLayout()
+        self.setLayout(layout)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(12)
         
+        # --- THANH CÔNG CỤ TÌM KIẾM ---
         top_layout = QHBoxLayout()
+        top_layout.setContentsMargins(0, 0, 0, 5)
+        
+        self.chk_select_all = QCheckBox("☑️ Chọn tất cả")
+        self.chk_select_all.setStyleSheet("font-weight: bold; color: #334155; padding-right: 15px;")
+        self.chk_select_all.toggled.connect(self.toggle_select_all)
+        
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 Tìm kiếm Content theo từ khóa, nội dung...")
+        self.search_input.setMinimumHeight(40)
+        self.search_input.setStyleSheet("padding: 8px 15px; font-size: 14px; border-radius: 8px; border: 1.5px solid #cbd5e1; background-color: #ffffff;")
         self.search_input.textChanged.connect(self.filter_drafts)
-        
-        self.btn_select_all = QPushButton("☑️ Chọn / Bỏ chọn tất cả")
-        self.btn_select_all.setStyleSheet("background-color: #f8fafc; border: 1px solid #cbd5e1;")
-        self.btn_select_all.clicked.connect(self.toggle_select_all)
 
+        top_layout.addWidget(self.chk_select_all)
         top_layout.addWidget(self.search_input, stretch=1)
-        top_layout.addWidget(self.btn_select_all)
         layout.addLayout(top_layout)
 
+        # --- BẢNG DỮ LIỆU ---
         self.table_widget = QTableWidget(len(self.drafts_list), 5) 
         self.table_widget.setHorizontalHeaderLabels(["Chọn", "Media", "Thời gian tạo", "Từ khóa / Nguồn", "Nội dung"])
         self.table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers) 
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table_widget.itemDoubleClicked.connect(self.on_item_double_clicked)
-        self.table_widget.verticalHeader().setDefaultSectionSize(80) 
+        self.table_widget.verticalHeader().setDefaultSectionSize(90) 
+        self.table_widget.setStyleSheet("QTableWidget { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; }")
         
         header = self.table_widget.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) 
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.table_widget.setColumnWidth(0, 60)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table_widget.setColumnWidth(1, 100)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.table_widget.setColumnWidth(2, 120)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.table_widget.setColumnWidth(3, 160)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch) 
+        
+        self.table_widget.itemChanged.connect(self._on_item_changed)
 
-        self.load_table_data()
+        # Tránh lag khi mở form: Load dữ liệu sau khi vẽ xong giao diện (đợi 100ms)
+        QTimer.singleShot(100, self.load_table_data)
+        
         layout.addWidget(self.table_widget, stretch=1)
 
-        schedule_group = QGroupBox("⏳ Thiết lập lịch cho các bài ĐÃ TÍCH CHỌN (☑️)")
-        schedule_layout = QHBoxLayout()
+        # --- LÊN LỊCH & NÚT BẤM (BOTTOM LAYOUT) ---
+        bottom_group = QGroupBox("🚀 Cài đặt & Thao tác (Áp dụng cho các bài đã chọn)")
+        bottom_group.setStyleSheet("QGroupBox { border: 1px solid #cbd5e1; border-radius: 8px; font-weight: bold; color: #1e293b; margin-top: 15px; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; left: 10px; background-color: #f1f5f9; }")
+        bg_layout = QHBoxLayout(bottom_group)
+        bg_layout.setContentsMargins(15, 20, 15, 15)
+        bg_layout.setSpacing(10)
 
+        # 1. Trái: Delete
+        self.btn_delete = QPushButton('🗑️ Xóa đã chọn')
+        self.btn_delete.setMinimumHeight(40)
+        self.btn_delete.setStyleSheet("""
+            QPushButton { background-color: #ffffff; color: #ef4444; font-weight: bold; border-radius: 6px; border: 1.5px solid #fca5a5; padding: 5px 15px; }
+            QPushButton:hover { background-color: #fef2f2; border: 1.5px solid #ef4444; }
+        """)
+        self.btn_delete.clicked.connect(self.delete_draft)
+        
+        # 2. Giữa: Schedule Group
         self.draft_time_picker = QTimeEdit()
         self.draft_time_picker.setDisplayFormat("HH:mm")
         self.draft_time_picker.setTime(QTime.currentTime())
+        self.draft_time_picker.setMinimumHeight(35)
+        self.draft_time_picker.setToolTip("Công cụ sẽ tự đăng trong ngày hôm nay. Nếu giờ đã qua, sẽ tự động chuyển lịch sang ngày mai.")
         
         self.spin_interval = QSpinBox()
         self.spin_interval.setRange(0, 1440) 
         self.spin_interval.setSuffix(" phút")
         self.spin_interval.setValue(15) 
+        self.spin_interval.setMinimumHeight(35)
 
-        self.btn_queue_selected = QPushButton("🚀 Chuyển vào Hàng đợi")
-        self.btn_queue_selected.setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold; padding: 10px 20px;")
-        self.btn_queue_selected.clicked.connect(self.queue_selected_posts)
-
-        schedule_layout.addWidget(QLabel("🕒 Bắt đầu đăng lúc:"))
-        schedule_layout.addWidget(self.draft_time_picker)
-        schedule_layout.addSpacing(20)
-        schedule_layout.addWidget(QLabel("⏳ Giãn cách giữa các bài:"))
-        schedule_layout.addWidget(self.spin_interval)
-        schedule_layout.addStretch()
-        schedule_layout.addWidget(self.btn_queue_selected)
-
-        schedule_group.setLayout(schedule_layout)
-        layout.addWidget(schedule_group)
-
-        action_layout = QHBoxLayout()
-        self.btn_post_now = QPushButton('⚡ Đăng Ngay bài ĐẦU TIÊN được tích chọn')
-        self.btn_post_now.setStyleSheet("background-color: #3b82f6; color: white;")
+        # 3. Phải: Actions
+        self.btn_post_now = QPushButton('⚡ Đăng Ngay bài đầu')
+        self.btn_post_now.setMinimumHeight(40)
+        self.btn_post_now.setStyleSheet("background-color: #3b82f6; color: white; font-weight: bold; border-radius: 6px; padding: 5px 15px;")
         self.btn_post_now.clicked.connect(self.request_post_now)
         
-        self.btn_delete = QPushButton('🗑️ Xóa các bài đã chọn')
-        self.btn_delete.setStyleSheet("background-color: #ef4444; color: white;")
-        self.btn_delete.clicked.connect(self.delete_draft)
+        self.btn_queue_selected = QPushButton("🚀 CHUYỂN VÀO HÀNG ĐỢI")
+        self.btn_queue_selected.setMinimumHeight(40)
+        self.btn_queue_selected.setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold; padding: 5px 15px; border-radius: 6px;")
+        self.btn_queue_selected.clicked.connect(self.queue_selected_posts)
+
+        bg_layout.addWidget(self.btn_delete)
+        bg_layout.addStretch(1)
+        bg_layout.addWidget(QLabel("🕒 Bắt đầu lúc:"))
+        bg_layout.addWidget(self.draft_time_picker)
+        bg_layout.addSpacing(10)
+        bg_layout.addWidget(QLabel("⏳ Giãn cách:"))
+        bg_layout.addWidget(self.spin_interval)
+        bg_layout.addStretch(1)
+        bg_layout.addWidget(self.btn_post_now)
+        bg_layout.addWidget(self.btn_queue_selected)
         
-        action_layout.addWidget(self.btn_post_now)
-        action_layout.addStretch()
-        action_layout.addWidget(self.btn_delete)
-        layout.addLayout(action_layout)
+        layout.addWidget(bottom_group)
         self.setLayout(layout)
+
+    def update_data(self, new_list):
+        self.drafts_list = new_list
+        self.table_widget.setRowCount(0)
+        # Tăng thời gian chờ lên 100ms để đảm bảo UI kịp vẽ (paint) xong trước khi vòng lặp data làm nghẽn CPU
+        QTimer.singleShot(100, self.load_table_data)
 
     def load_table_data(self):
         self.table_widget.setRowCount(0)
@@ -236,18 +292,20 @@ class DraftsDialog(QDialog):
             img_path = d.get('image_path', '')
             
             if vid_path and os.path.exists(vid_path):
-                lbl = QLabel("🎬 CÓ VIDEO")
+                lbl = QLabel("🎬 VIDEO")
                 lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 lbl.setStyleSheet("font-weight: bold; color: #ef4444;")
+                self.table_widget.setItem(row, 1, QTableWidgetItem("")) # Placeholder for background
                 self.table_widget.setCellWidget(row, 1, lbl)
             elif img_path and os.path.exists(img_path):
                 img_label = QLabel()
                 pixmap = QPixmap(img_path).scaled(70, 70, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 img_label.setPixmap(pixmap)
                 img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.table_widget.setItem(row, 1, QTableWidgetItem("")) # Placeholder for background
                 self.table_widget.setCellWidget(row, 1, img_label)
             else:
-                no_img_item = QTableWidgetItem("Không có")
+                no_img_item = QTableWidgetItem("")
                 no_img_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table_widget.setItem(row, 1, no_img_item)
             
@@ -256,9 +314,19 @@ class DraftsDialog(QDialog):
             self.table_widget.setItem(row, 3, QTableWidgetItem(d.get("keyword", "")))
             self.table_widget.setItem(row, 4, QTableWidgetItem(d.get("content", "").replace('\n', ' ')))
 
+    def _on_item_changed(self, item):
+        if getattr(self, 'is_loading', False):
+            return
+        if item.column() == 0:
+            row = item.row()
+            color = QColor("#e0f2fe") if item.checkState() == Qt.CheckState.Checked else QColor("#ffffff")
+            for col in range(self.table_widget.columnCount()):
+                it = self.table_widget.item(row, col)
+                if it:
+                    it.setBackground(color)
+
     def toggle_select_all(self):
-        self.is_all_checked = not self.is_all_checked
-        new_state = Qt.CheckState.Checked if self.is_all_checked else Qt.CheckState.Unchecked
+        new_state = Qt.CheckState.Checked if self.chk_select_all.isChecked() else Qt.CheckState.Unchecked
         for row in range(self.table_widget.rowCount()):
             if not self.table_widget.isRowHidden(row): 
                 self.table_widget.item(row, 0).setCheckState(new_state)
@@ -300,7 +368,8 @@ class DraftsDialog(QDialog):
             draft_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
             if draft_data in self.drafts_list: self.drafts_list.remove(draft_data)
             self.table_widget.removeRow(row)
-        self.is_all_checked = False
+        if hasattr(self, 'chk_select_all'):
+            self.chk_select_all.setChecked(False)
 
     def request_post_now(self):
         selected_rows = self.get_checked_rows()
@@ -315,12 +384,14 @@ class DraftsDialog(QDialog):
     def delete_draft(self):
         selected_rows = self.get_checked_rows()
         if not selected_rows: return
-        if QMessageBox.question(self, 'Xác nhận', f'Xóa {len(selected_rows)} bài?') == QMessageBox.StandardButton.Yes:
+        from PySide6.QtWidgets import QMessageBox
+        if QMessageBox.question(self, 'Xác nhận', f'Bạn có chắc chắn muốn xóa {len(selected_rows)} bài đã chọn?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
             for row in reversed(selected_rows):
                 draft_data = self.drafts_list[row]
                 if draft_data in self.drafts_list: self.drafts_list.remove(draft_data) 
                 self.table_widget.removeRow(row)
-            self.is_all_checked = False
+            if hasattr(self, 'chk_select_all'):
+                self.chk_select_all.setChecked(False)
 
 
 class QueueDialog(QDialog):
@@ -332,27 +403,43 @@ class QueueDialog(QDialog):
         self.setStyleSheet(MODERN_STYLE)
         
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(12)
+        
         self.table_widget = QTableWidget(0, 3)
         self.table_widget.setHorizontalHeaderLabels(["Giờ sẽ đăng", "Từ khóa / Nguồn", "Nội dung"])
         self.table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers) 
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows) 
         self.table_widget.itemDoubleClicked.connect(self.edit_queue_time)
+        self.table_widget.verticalHeader().setDefaultSectionSize(70) 
         self.table_widget.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) 
-        layout.addWidget(self.table_widget)
+        self.table_widget.setStyleSheet("QTableWidget { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; }")
+        layout.addWidget(self.table_widget, stretch=1)
 
         action_layout = QHBoxLayout()
         self.btn_edit = QPushButton('✏️ Sửa giờ đăng')
-        self.btn_edit.setStyleSheet("background-color: #eab308; color: white;")
+        self.btn_edit.setMinimumHeight(45)
+        self.btn_edit.setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold; font-size: 14px; border-radius: 8px; padding: 10px 20px;")
         self.btn_edit.clicked.connect(self.edit_queue_time)
+        
         self.btn_delete = QPushButton('❌ Xóa khỏi Hàng đợi')
-        self.btn_delete.setStyleSheet("background-color: #ef4444; color: white;")
+        self.btn_delete.setMinimumHeight(45)
+        self.btn_delete.setStyleSheet("background-color: #ef4444; color: white; font-weight: bold; font-size: 14px; border-radius: 8px; padding: 10px 20px;")
         self.btn_delete.clicked.connect(self.delete_queue_item)
         
-        action_layout.addStretch()
-        action_layout.addWidget(self.btn_edit)
-        action_layout.addWidget(self.btn_delete)
+        action_layout.addStretch(1)
+        action_layout.addWidget(self.btn_edit, stretch=2)
+        action_layout.addSpacing(15)
+        action_layout.addWidget(self.btn_delete, stretch=2)
         layout.addLayout(action_layout)
-        self.refresh_table()
+        
+        # Tránh lag khi mở form: Load dữ liệu sau khi vẽ xong giao diện
+        QTimer.singleShot(100, self.refresh_table)
+
+    def update_data(self, new_list):
+        self.queue_list = new_list
+        self.table_widget.setRowCount(0)
+        QTimer.singleShot(100, self.refresh_table)
 
     def refresh_table(self):
         self.table_widget.setRowCount(0)
