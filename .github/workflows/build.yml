@@ -11,7 +11,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # Build Windows bản xịn nhất và macOS cả 2 kiến trúc (Intel & Apple Silicon)
         os: [windows-latest, macos-13, macos-14]
 
     steps:
@@ -70,7 +69,6 @@ jobs:
         choco install innosetup -y
         
         echo "Đang đóng gói file Setup..."
-        # Chạy trực tiếp file thực thi của Inno Setup
         & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 
     - name: Upload Windows Artifact
@@ -83,25 +81,36 @@ jobs:
     - name: Create DMG File (Tạo bộ cài đặt macOS)
       if: startsWith(matrix.os, 'macos')
       run: |
-        echo "Đang cấu hình Info.plist để yêu cầu macOS tối thiểu là 13.0..."
-        /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" Komeify.app/Contents/Info.plist || /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 13.0" Komeify.app/Contents/Info.plist
+        echo "Tìm kiếm file .app được Nuitka tạo ra..."
+        APP_PATH=$(find . -maxdepth 3 -name "*.app" -type d | head -n 1)
         
-        echo "Đang đóng gói Komeify.app thành file .dmg..."
+        if [ -z "$APP_PATH" ]; then
+          echo "Lỗi: Không tìm thấy file .app nào sau khi build!"
+          find . -maxdepth 4 -type d | head -40
+          exit 1
+        fi
+        
+        echo "Tìm thấy app tại: $APP_PATH"
+
+        echo "Đang cấu hình Info.plist để yêu cầu macOS tối thiểu là 13.0..."
+        PLIST="$APP_PATH/Contents/Info.plist"
+        /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion 13.0" "$PLIST" 2>/dev/null || \
+        /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" "$PLIST"
+
+        echo "Đang đóng gói thành file .dmg..."
         mkdir -p Output
 
-        # Đặt tên file theo kiến trúc CPU để không bị trùng
         if [ "$RUNNER_ARCH" == "ARM64" ]; then
           SUFFIX="AppleSilicon"
         else
           SUFFIX="Intel"
         fi
 
-        hdiutil create -volname "Komeify" -srcfolder "Komeify.app" -ov -format UDZO "Output/Komeify_macOS_${SUFFIX}.dmg"
-        
-        # Lưu biến môi trường để bước Upload có thể dùng
+        hdiutil create -volname "Komeify" -srcfolder "$APP_PATH" -ov -format UDZO "Output/Komeify_macOS_${SUFFIX}.dmg"
+
         echo "DMG_NAME=Komeify_macOS_${SUFFIX}.dmg" >> $GITHUB_ENV
         echo "ARTIFACT_NAME=Komeify-macOS-${SUFFIX}-DMG" >> $GITHUB_ENV
-        
+
     - name: Upload macOS Artifact
       if: startsWith(matrix.os, 'macos')
       uses: actions/upload-artifact@v4

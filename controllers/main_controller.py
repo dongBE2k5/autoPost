@@ -300,10 +300,8 @@ class MainController(QObject):
 
     @Slot()
     def open_drafts_dialog(self):
-        drafts_list_dicts = [d.to_dict() for d in self.settings.get_drafts()]
-        
         if not hasattr(self, 'drafts_dialog'):
-            self.drafts_dialog = DraftsDialog([], self.view)
+            self.drafts_dialog = DraftsDialog(self.view)
             
             # Bắt tín hiệu từ Dialog gửi về Controller
             self.drafts_dialog.post_now_requested.connect(
@@ -329,35 +327,16 @@ class MainController(QObject):
                 
             self.drafts_dialog.queue_requested.connect(_on_queue_requested)
             
-        self.drafts_dialog.update_data(drafts_list_dicts)
+        self.drafts_dialog.update_data()
         self.drafts_dialog.exec()
-        
-        # Lưu lại DB sau khi đóng cửa sổ
-        updated_drafts = [
-            ContentDraft(
-                keyword=d.get('keyword', ''), 
-                content=d.get('content', ''), 
-                timestamp=d.get('timestamp', ''),
-                image_path=d.get('image_path', ''), 
-                video_path=d.get('video_path', '')
-            ) for d in self.drafts_dialog.drafts_list
-        ]
-        self.settings.save_drafts(updated_drafts)
 
     @Slot()
     def open_queue_dialog(self):
-        queue_list_dicts = [q.to_dict() for q in self.settings.get_queue()]
-        
         if not hasattr(self, 'queue_dialog'):
-            self.queue_dialog = QueueDialog([], self.view)
+            self.queue_dialog = QueueDialog(self.view)
             
-        self.queue_dialog.update_data(queue_list_dicts)
+        self.queue_dialog.update_data()
         self.queue_dialog.exec()
-        
-        def dict_to_queue_obj(q):
-            return ContentDraft(time_queue=q.get('time',''), keyword=q.get('keyword',''), 
-                                content=q.get('content',''), image_path=q.get('image_path',''), video_path=q.get('video_path',''))
-        self.settings.save_queue([dict_to_queue_obj(q) for q in self.queue_dialog.queue_list])
 
     # ==========================================
     # CÁC HÀM XỬ LÝ NGHIỆP VỤ CHÍNH

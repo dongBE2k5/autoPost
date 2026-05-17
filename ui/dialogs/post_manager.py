@@ -11,6 +11,78 @@ from config.settings import MODERN_STYLE
 from ui.dialogs.schedule_settings import EditTimeDialog
 from ui.dialogs.user_image_selector import UserImageSelectorDialog
 from services.image_library_service import ImageLibraryService
+from PySide6.QtSql import QSqlTableModel, QSqlDatabase
+from PySide6.QtCore import Qt
+
+class PostSqlModel(QSqlTableModel):
+    """Custom Model để format chữ (xóa \n) và render ảnh Thumbnail"""
+    def __init__(self, parent=None, db=None):
+        super().__init__(parent, db)
+        self._custom_sort_clause = ""
+        
+    def setSort(self, column, order):
+        # Cột 2 là timestamp: DD/MM/YYYY HH:MM:SS
+        if column == 2:
+            order_str = "DESC" if order == Qt.SortOrder.DescendingOrder else "ASC"
+            # Ép kiểu ngày tháng trong SQLite để sort đúng: YYYYMMDD HH:MM:SS
+            self._custom_sort_clause = f" ORDER BY substr(timestamp, 7, 4) || substr(timestamp, 4, 2) || substr(timestamp, 1, 2) || substr(timestamp, 11) {order_str}"
+            # Xóa sort mặc định của model để tránh bị dính 2 lệnh ORDER BY
+            super().setSort(-1, Qt.SortOrder.AscendingOrder)
+        else:
+            self._custom_sort_clause = ""
+            super().setSort(column, order)
+            
+    def selectStatement(self):
+        query = super().selectStatement()
+        if self._custom_sort_clause:
+            query += self._custom_sort_clause
+        return query
+    """Custom Model để format chữ (xóa \n) và render ảnh Thumbnail"""
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return super().data(index, role)
+            
+        col = index.column()
+        # Cột 1 là Nội dung
+        if col == 1 and role == Qt.ItemDataRole.DisplayRole:
+            val = super().data(index, role)
+            if val and isinstance(val, str):
+                # Thay thế các ký tự xuống dòng bằng khoảng trắng
+                val = val.replace('\n', ' ').replace('\r', '')
+                # Rút gọn chuỗi nếu quá dài để hiển thị trên 1 dòng
+                if len(val) > 100:
+                    val = val[:97] + "..."
+                return val
+                
+        # Cột 3 là image_path, Cột 4 là video_path
+        if col == 3:
+            vid_path = super().data(self.index(index.row(), 4), Qt.ItemDataRole.DisplayRole)
+            img_path = super().data(index, Qt.ItemDataRole.DisplayRole)
+            
+            if role == Qt.ItemDataRole.DisplayRole:
+                # Nếu là Video
+                if vid_path and os.path.exists(vid_path):
+                    return "🎬 VIDEO"
+                elif vid_path:
+                    return "⚠️ Video không tồn tại"
+                    
+                # Nếu là Image
+                if img_path and os.path.exists(img_path):
+                    return "" # Ẩn text để hiển thị Thumbnail
+                elif img_path:
+                    return "⚠️ Ảnh không tồn tại"
+                return "Trống"
+            
+            elif role == Qt.ItemDataRole.DecorationRole:
+                if not (vid_path and os.path.exists(vid_path)) and img_path and os.path.exists(img_path):
+                    pixmap = QPixmap(img_path)
+                    if not pixmap.isNull():
+                        return pixmap.scaled(70, 70, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        
+            elif role == Qt.ItemDataRole.TextAlignmentRole:
+                return int(Qt.AlignmentFlag.AlignCenter)
+
+        return super().data(index, role)
 
 class DraftDetailDialog(QDialog):
     def __init__(self, draft_data, parent=None):
@@ -160,9 +232,8 @@ class DraftsDialog(QDialog):
     post_now_requested = Signal(dict) 
     queue_requested = Signal(dict, str) 
 
-    def __init__(self, drafts_list, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.drafts_list = drafts_list 
         self.setWindowTitle("📁 Kho Content đã tạo (Chờ xếp lịch)")
         self.resize(1100, 700) 
         self.setStyleSheet(MODERN_STYLE)
@@ -178,44 +249,51 @@ class DraftsDialog(QDialog):
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(0, 0, 0, 5)
         
-        self.chk_select_all = QCheckBox("☑️ Chọn tất cả")
-        self.chk_select_all.setStyleSheet("font-weight: bold; color: #334155; padding-right: 15px;")
-        self.chk_select_all.toggled.connect(self.toggle_select_all)
-        
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 Tìm kiếm Content theo từ khóa, nội dung...")
         self.search_input.setMinimumHeight(40)
         self.search_input.setStyleSheet("padding: 8px 15px; font-size: 14px; border-radius: 8px; border: 1.5px solid #cbd5e1; background-color: #ffffff;")
         self.search_input.textChanged.connect(self.filter_drafts)
 
-        top_layout.addWidget(self.chk_select_all)
         top_layout.addWidget(self.search_input, stretch=1)
         layout.addLayout(top_layout)
 
         # --- BẢNG DỮ LIỆU ---
-        self.table_widget = QTableWidget(len(self.drafts_list), 5) 
-        self.table_widget.setHorizontalHeaderLabels(["Chọn", "Media", "Thời gian tạo", "Từ khóa / Nguồn", "Nội dung"])
+        self.table_widget = QTableView() 
         self.table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers) 
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table_widget.itemDoubleClicked.connect(self.on_item_double_clicked)
+        self.table_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table_widget.doubleClicked.connect(self.on_item_double_clicked)
         self.table_widget.verticalHeader().setDefaultSectionSize(90) 
-        self.table_widget.setStyleSheet("QTableWidget { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; }")
+        self.table_widget.setStyleSheet("QTableView { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; }")
         
+        db = QSqlDatabase.database("SettingsDB")
+        self.sql_model = PostSqlModel(self, db)
+        self.sql_model.setTable("drafts")
+        self.sql_model.setEditStrategy(QSqlTableModel.EditStrategy.OnManualSubmit)
+        
+        self.sql_model.setHeaderData(0, Qt.Orientation.Horizontal, "Từ khóa / Nguồn")
+        self.sql_model.setHeaderData(1, Qt.Orientation.Horizontal, "Nội dung")
+        self.sql_model.setHeaderData(2, Qt.Orientation.Horizontal, "Thời gian tạo")
+        self.sql_model.setHeaderData(3, Qt.Orientation.Horizontal, "Media")
+        
+        self.table_widget.setModel(self.sql_model)
+        self.table_widget.setSortingEnabled(True)
+        
+        # Ẩn các cột thừa (video_path, image_ids)
+        for col in range(4, self.sql_model.columnCount()):
+            self.table_widget.hideColumn(col)
+            
         header = self.table_widget.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self.table_widget.setColumnWidth(0, 60)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        self.table_widget.setColumnWidth(1, 100)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        self.table_widget.setColumnWidth(2, 120)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        self.table_widget.setColumnWidth(3, 160)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch) 
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.table_widget.setColumnWidth(0, 200) # Từ khóa
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch) # Nội dung
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        self.table_widget.setColumnWidth(2, 150) # Thời gian
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.table_widget.setColumnWidth(3, 100) # Media
         
-        self.table_widget.itemChanged.connect(self._on_item_changed)
-
-        # Tránh lag khi mở form: Load dữ liệu sau khi vẽ xong giao diện (đợi 100ms)
-        QTimer.singleShot(100, self.load_table_data)
+        self.refresh_table()
         
         layout.addWidget(self.table_widget, stretch=1)
 
@@ -273,131 +351,94 @@ class DraftsDialog(QDialog):
         layout.addWidget(bottom_group)
         self.setLayout(layout)
 
-    def update_data(self, new_list):
-        self.drafts_list = new_list
-        self.table_widget.setRowCount(0)
-        # Tăng thời gian chờ lên 100ms để đảm bảo UI kịp vẽ (paint) xong trước khi vòng lặp data làm nghẽn CPU
-        QTimer.singleShot(100, self.load_table_data)
+    def update_data(self, new_list=None):
+        self.refresh_table()
 
-    def load_table_data(self):
-        self.table_widget.setRowCount(0)
-        for row, d in enumerate(self.drafts_list):
-            self.table_widget.insertRow(row)
-            chk_item = QTableWidgetItem()
-            chk_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-            chk_item.setCheckState(Qt.CheckState.Unchecked)
-            chk_item.setData(Qt.ItemDataRole.UserRole, row)
-            
-            vid_path = d.get('video_path', '')
-            img_path = d.get('image_path', '')
-            
-            if vid_path and os.path.exists(vid_path):
-                lbl = QLabel("🎬 VIDEO")
-                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                lbl.setStyleSheet("font-weight: bold; color: #ef4444;")
-                self.table_widget.setItem(row, 1, QTableWidgetItem("")) # Placeholder for background
-                self.table_widget.setCellWidget(row, 1, lbl)
-            elif img_path and os.path.exists(img_path):
-                img_label = QLabel()
-                pixmap = QPixmap(img_path).scaled(70, 70, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                img_label.setPixmap(pixmap)
-                img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table_widget.setItem(row, 1, QTableWidgetItem("")) # Placeholder for background
-                self.table_widget.setCellWidget(row, 1, img_label)
-            else:
-                no_img_item = QTableWidgetItem("")
-                no_img_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table_widget.setItem(row, 1, no_img_item)
-            
-            self.table_widget.setItem(row, 0, chk_item)
-            self.table_widget.setItem(row, 2, QTableWidgetItem(d.get("timestamp", "Bản cũ")))
-            self.table_widget.setItem(row, 3, QTableWidgetItem(d.get("keyword", "")))
-            self.table_widget.setItem(row, 4, QTableWidgetItem(d.get("content", "").replace('\n', ' ')))
-
-    def _on_item_changed(self, item):
-        if getattr(self, 'is_loading', False):
-            return
-        if item.column() == 0:
-            row = item.row()
-            color = QColor("#e0f2fe") if item.checkState() == Qt.CheckState.Checked else QColor("#ffffff")
-            for col in range(self.table_widget.columnCount()):
-                it = self.table_widget.item(row, col)
-                if it:
-                    it.setBackground(color)
-
-    def toggle_select_all(self):
-        new_state = Qt.CheckState.Checked if self.chk_select_all.isChecked() else Qt.CheckState.Unchecked
-        for row in range(self.table_widget.rowCount()):
-            if not self.table_widget.isRowHidden(row): 
-                self.table_widget.item(row, 0).setCheckState(new_state)
+    def refresh_table(self):
+        # Trực tiếp sort bằng model database
+        self.sql_model.setSort(2, Qt.SortOrder.DescendingOrder)
+        self.sql_model.select()
 
     def get_checked_rows(self):
-        rows = []
-        for row in range(self.table_widget.rowCount()):
-            if self.table_widget.item(row, 0).checkState() == Qt.CheckState.Checked:
-                rows.append(row)
-        return rows
+        return [idx.row() for idx in self.table_widget.selectionModel().selectedRows()]
 
     def filter_drafts(self, text):
-        search_term = text.lower()
-        for row in range(self.table_widget.rowCount()):
-            d_data = self.drafts_list[row]
-            if search_term in d_data.get("keyword", "").lower() or search_term in d_data.get("content", "").lower():
-                self.table_widget.setRowHidden(row, False)
-            else: 
-                self.table_widget.setRowHidden(row, True)
+        search_term = text.lower().replace("'", "''")
+        if search_term:
+            self.sql_model.setFilter(f"keyword LIKE '%{search_term}%' OR content LIKE '%{search_term}%' OR timestamp LIKE '%{search_term}%'")
+        else:
+            self.sql_model.setFilter("")
+        self.sql_model.select()
 
-    def on_item_double_clicked(self, item):
-        row = item.row()
-        draft_data = self.drafts_list[row]
+    def _get_draft_dict_from_row(self, row):
+        return {
+            "keyword": self.sql_model.data(self.sql_model.index(row, 0), Qt.ItemDataRole.EditRole),
+            "content": self.sql_model.data(self.sql_model.index(row, 1), Qt.ItemDataRole.EditRole),
+            "timestamp": self.sql_model.data(self.sql_model.index(row, 2), Qt.ItemDataRole.EditRole),
+            "image_path": self.sql_model.data(self.sql_model.index(row, 3), Qt.ItemDataRole.EditRole),
+            "video_path": self.sql_model.data(self.sql_model.index(row, 4), Qt.ItemDataRole.EditRole)
+        }
+
+    def on_item_double_clicked(self, index):
+        row = index.row()
+        draft_data = self._get_draft_dict_from_row(row)
+        
         dialog = DraftDetailDialog(draft_data, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.load_table_data()
+            # Lưu Cả Ảnh
+            self.sql_model.setData(self.sql_model.index(row, 0), draft_data.get("keyword"))
+            self.sql_model.setData(self.sql_model.index(row, 1), draft_data.get("content"))
+            self.sql_model.setData(self.sql_model.index(row, 3), draft_data.get("image_path"))
+            self.sql_model.submitAll()
+            self.refresh_table()
 
     def queue_selected_posts(self):
         selected_rows = self.get_checked_rows()
         if not selected_rows: return
         start_time = self.draft_time_picker.time()
         interval_mins = self.spin_interval.value()
-        for i, row in enumerate(selected_rows):
-            draft_data = self.drafts_list[row]
+        
+        for i, row in enumerate(sorted(selected_rows)):
+            draft_data = self._get_draft_dict_from_row(row)
             post_time = start_time.addSecs(i * interval_mins * 60)
             self.queue_requested.emit(draft_data, post_time.toString("HH:mm"))
             
-        for row in reversed(selected_rows):
-            draft_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
-            if draft_data in self.drafts_list: self.drafts_list.remove(draft_data)
-            self.table_widget.removeRow(row)
-        if hasattr(self, 'chk_select_all'):
-            self.chk_select_all.setChecked(False)
+        for row in sorted(selected_rows, reverse=True):
+            self.sql_model.removeRow(row)
+            
+        self.sql_model.submitAll()
+        self.refresh_table()
 
     def request_post_now(self):
         selected_rows = self.get_checked_rows()
         if not selected_rows: return
         row = selected_rows[0] 
-        draft_data = self.drafts_list[row]
+        draft_data = self._get_draft_dict_from_row(row)
+        
         if QMessageBox.question(self, 'Xác nhận', 'Đăng ngay?') == QMessageBox.StandardButton.Yes:
             self.post_now_requested.emit(draft_data) 
-            if draft_data in self.drafts_list: self.drafts_list.remove(draft_data)
+            self.sql_model.removeRow(row)
+            self.sql_model.submitAll()
             self.accept() 
 
     def delete_draft(self):
         selected_rows = self.get_checked_rows()
         if not selected_rows: return
-        from PySide6.QtWidgets import QMessageBox
+        
         if QMessageBox.question(self, 'Xác nhận', f'Bạn có chắc chắn muốn xóa {len(selected_rows)} bài đã chọn?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
-            for row in reversed(selected_rows):
-                draft_data = self.drafts_list[row]
-                if draft_data in self.drafts_list: self.drafts_list.remove(draft_data) 
-                self.table_widget.removeRow(row)
-            if hasattr(self, 'chk_select_all'):
-                self.chk_select_all.setChecked(False)
+            for row in sorted(selected_rows, reverse=True):
+                self.sql_model.removeRow(row)
+                
+            self.sql_model.submitAll()
+            self.refresh_table()
 
+
+from PySide6.QtWidgets import QTableView
+from PySide6.QtSql import QSqlTableModel, QSqlDatabase
 
 class QueueDialog(QDialog):
-    def __init__(self, queue_list, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.queue_list = queue_list 
         self.setWindowTitle("📋 Quản lý Hàng Đợi")
         self.resize(900, 600)
         self.setStyleSheet(MODERN_STYLE)
@@ -406,14 +447,38 @@ class QueueDialog(QDialog):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(12)
         
-        self.table_widget = QTableWidget(0, 3)
-        self.table_widget.setHorizontalHeaderLabels(["Giờ sẽ đăng", "Từ khóa / Nguồn", "Nội dung"])
-        self.table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers) 
+        self.table_widget = QTableView()
         self.table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows) 
-        self.table_widget.itemDoubleClicked.connect(self.edit_queue_time)
+        self.table_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers) 
+        self.table_widget.doubleClicked.connect(self.edit_queue_time)
         self.table_widget.verticalHeader().setDefaultSectionSize(70) 
-        self.table_widget.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) 
-        self.table_widget.setStyleSheet("QTableWidget { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; }")
+        self.table_widget.setStyleSheet("QTableView { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; }")
+        
+        db = QSqlDatabase.database("SettingsDB")
+        self.model = PostSqlModel(self, db)
+        self.model.setTable("queue_posts")
+        self.model.setEditStrategy(QSqlTableModel.EditStrategy.OnManualSubmit)
+        
+        self.model.setHeaderData(0, Qt.Orientation.Horizontal, "Giờ sẽ đăng")
+        self.model.setHeaderData(1, Qt.Orientation.Horizontal, "Từ khóa / Nguồn")
+        self.model.setHeaderData(2, Qt.Orientation.Horizontal, "Nội dung")
+        self.model.setHeaderData(3, Qt.Orientation.Horizontal, "Media")
+        
+        self.table_widget.setModel(self.model)
+        # Hide extra columns (video_path, image_ids)
+        for col in range(4, self.model.columnCount()):
+            self.table_widget.hideColumn(col)
+            
+        header = self.table_widget.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self.table_widget.setColumnWidth(0, 120) # Giờ sẽ đăng
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        self.table_widget.setColumnWidth(1, 200) # Từ khóa
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) # Nội dung
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.table_widget.setColumnWidth(3, 100) # Media
+        
         layout.addWidget(self.table_widget, stretch=1)
 
         action_layout = QHBoxLayout()
@@ -433,40 +498,34 @@ class QueueDialog(QDialog):
         action_layout.addWidget(self.btn_delete, stretch=2)
         layout.addLayout(action_layout)
         
-        # Tránh lag khi mở form: Load dữ liệu sau khi vẽ xong giao diện
-        QTimer.singleShot(100, self.refresh_table)
+        self.refresh_table()
 
-    def update_data(self, new_list):
-        self.queue_list = new_list
-        self.table_widget.setRowCount(0)
-        QTimer.singleShot(100, self.refresh_table)
+    def update_data(self, new_list=None):
+        self.refresh_table()
 
     def refresh_table(self):
-        self.table_widget.setRowCount(0)
-        self.queue_list.sort(key=lambda x: x['time'])
-        for row, q in enumerate(self.queue_list):
-            self.table_widget.insertRow(row)
-            time_item = QTableWidgetItem(f" 🕒 {q.get('time', '00:00')} ")
-            time_item.setData(Qt.ItemDataRole.UserRole, q)
-            time_item.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-            self.table_widget.setItem(row, 0, time_item)
-            kw_display = f"🖼️ {q.get('keyword', '')}" if q.get('image_path') else q.get("keyword", "")
-            self.table_widget.setItem(row, 1, QTableWidgetItem(kw_display))
-            self.table_widget.setItem(row, 2, QTableWidgetItem(q.get("content", "").replace('\n', ' ')))
+        # Sort by time ascending (column 0)
+        self.model.setSort(0, Qt.SortOrder.AscendingOrder)
+        self.model.select()
 
     def edit_queue_time(self):
-        selected_items = self.table_widget.selectedItems()
-        if not selected_items: return
-        queue_data = self.table_widget.item(selected_items[0].row(), 0).data(Qt.ItemDataRole.UserRole)
+        selected_indexes = self.table_widget.selectionModel().selectedRows()
+        if not selected_indexes: return
+        row = selected_indexes[0].row()
+        current_time = self.model.data(self.model.index(row, 0))
         
-        dialog = EditTimeDialog(queue_data.get("time", "00:00"), self)
+        dialog = EditTimeDialog(current_time, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            queue_data["time"] = dialog.get_new_time() 
+            self.model.setData(self.model.index(row, 0), dialog.get_new_time())
+            self.model.submitAll()
             self.refresh_table()
 
     def delete_queue_item(self):
-        selected_rows = set(item.row() for item in self.table_widget.selectedItems())
-        for row in sorted(selected_rows, reverse=True):
-            queue_data = self.table_widget.item(row, 0).data(Qt.ItemDataRole.UserRole)
-            if queue_data in self.queue_list: self.queue_list.remove(queue_data) 
-            self.table_widget.removeRow(row)
+        selected_indexes = self.table_widget.selectionModel().selectedRows()
+        if not selected_indexes: return
+        
+        if QMessageBox.question(self, 'Xác nhận', f'Bạn có chắc chắn muốn xóa {len(selected_indexes)} mục?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            for index in sorted(selected_indexes, key=lambda x: x.row(), reverse=True):
+                self.model.removeRow(index.row())
+            self.model.submitAll()
+            self.refresh_table()
